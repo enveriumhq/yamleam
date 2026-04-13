@@ -1,0 +1,19 @@
+name = "yamleam"
+version = "1.0.0"
+target = "erlang"
+
+description = "A pure-Gleam YAML parser."
+
+licences = ["Apache-2.0"]
+
+repository = { type = "github", user = "enveriumhq", repo = "yamleam" }
+links = [
+  { title = "Repository", href = "https://github.com/enveriumhq/yamleam" },
+  { title = "Roadmap", href = "https://github.com/enveriumhq/yamleam/blob/main/ROADMAP.md" },
+]
+
+[dependencies]
+gleam_stdlib = ">= 0.46.0 and < 2.0.0"
+
+[dev_dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"

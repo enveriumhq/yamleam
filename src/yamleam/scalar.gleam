@@ -1,0 +1,181 @@
+//// Plain scalar resolution.
+////
+//// Converts the verbatim text of a plain (unquoted) scalar into a typed
+//// `YamlNode` according to YAML 1.2 resolution rules. Quoted scalars are
+//// always strings and bypass this layer entirely.
+////
+//// Resolution priority (first match wins):
+////   1. Empty / "null" / "Null" / "NULL" / "~"  →  YamlNull
+////   2. "true"  / "True"  / "TRUE"               →  YamlBool(True)
+////   3. "false" / "False" / "FALSE"              →  YamlBool(False)
+////   4. Decimal integer (optional sign)          →  YamlInt
+////   5. Decimal float (optional sign, exponent)  →  YamlFloat
+////   6. Otherwise                                 →  YamlString
+////
+//// yamleam v0.1 explicitly does NOT recognize:
+////   - YAML 1.1 boolean variants ("yes", "no", "on", "off")
+////   - Hex / octal / binary integers
+////   - Infinity / NaN
+//// Use double-quoted strings if you need any of those literally.
+
+import gleam/float
+import gleam/int
+import gleam/string
+import yamleam/node.{
+  type YamlNode, YamlBool, YamlFloat, YamlInt, YamlNull, YamlString,
+}
+
+pub fn resolve(text: String) -> YamlNode {
+  case text {
+    "" | "null" | "Null" | "NULL" | "~" -> YamlNull
+    "true" | "True" | "TRUE" -> YamlBool(True)
+    "false" | "False" | "FALSE" -> YamlBool(False)
+    _ ->
+      case try_int(text) {
+        Ok(i) -> YamlInt(i)
+        Error(_) ->
+          case try_float(text) {
+            Ok(f) -> YamlFloat(f)
+            Error(_) -> YamlString(text)
+          }
+      }
+  }
+}
+
+/// Try to parse a strict decimal integer with optional leading sign.
+/// Rejects leading zeros (other than the value `0` itself) so values like
+/// `"01234"` resolve to a string instead of an int — these often represent
+/// account numbers, postal codes, etc., and should not be silently
+/// numeric-converted.
+fn try_int(text: String) -> Result(Int, Nil) {
+  case text {
+    "" -> Error(Nil)
+    "0" -> Ok(0)
+    "+0" -> Ok(0)
+    "-0" -> Ok(0)
+    _ -> {
+      // Strip optional sign and check the rest is digits with no leading zero
+      let #(sign_ok, body) = strip_sign(text)
+      case sign_ok && all_digits(body) && !leading_zero(body) {
+        True -> int.parse(text)
+        False -> Error(Nil)
+      }
+    }
+  }
+}
+
+fn strip_sign(text: String) -> #(Bool, String) {
+  case string.starts_with(text, "+") || string.starts_with(text, "-") {
+    True -> #(True, string.drop_start(text, 1))
+    False -> #(True, text)
+  }
+}
+
+fn all_digits(text: String) -> Bool {
+  case text {
+    "" -> False
+    _ -> string.to_graphemes(text) |> list_all(is_ascii_digit)
+  }
+}
+
+fn list_all(items: List(a), pred: fn(a) -> Bool) -> Bool {
+  case items {
+    [] -> True
+    [h, ..t] ->
+      case pred(h) {
+        True -> list_all(t, pred)
+        False -> False
+      }
+  }
+}
+
+fn is_ascii_digit(g: String) -> Bool {
+  case g {
+    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" -> True
+    _ -> False
+  }
+}
+
+fn leading_zero(text: String) -> Bool {
+  case string.first(text) {
+    Ok("0") -> string.length(text) > 1
+    _ -> False
+  }
+}
+
+/// Try to parse a decimal float. Allows optional sign, optional fractional
+/// part, and optional exponent. The Gleam stdlib `float.parse` requires
+/// both an integer part and a fractional part with a `.` between them, so
+/// we normalize first by adding `.0` to bare integers (which we know are
+/// not bare integers because `try_int` already failed) and accepting
+/// scientific notation manually.
+fn try_float(text: String) -> Result(Float, Nil) {
+  case float.parse(text) {
+    Ok(f) -> Ok(f)
+    Error(_) -> try_float_with_exponent(text)
+  }
+}
+
+fn try_float_with_exponent(text: String) -> Result(Float, Nil) {
+  // Look for "e" or "E" — handle scientific notation manually since
+  // Gleam's float.parse doesn't accept it directly.
+  case string.split_once(text, "e") {
+    Ok(parts) -> parse_scientific(parts)
+    Error(_) ->
+      case string.split_once(text, "E") {
+        Ok(parts) -> parse_scientific(parts)
+        Error(_) -> Error(Nil)
+      }
+  }
+}
+
+// Float64 can represent magnitudes up to roughly 1e308. Anything past
+// that overflows to infinity (which Erlang's float arithmetic raises as
+// `badarith`). We bound the exponent conservatively to ±300 so callers
+// see scalars like `1e10000` resolve to `YamlString("1e10000")` via the
+// fallback path instead of crashing the BEAM.
+const max_float_exponent = 300
+
+fn parse_scientific(parts: #(String, String)) -> Result(Float, Nil) {
+  let #(mantissa_text, exponent_text) = parts
+  // Mantissa may be an integer or a float
+  let mantissa_result = case float.parse(mantissa_text) {
+    Ok(f) -> Ok(f)
+    Error(_) -> int.parse(mantissa_text) |> result_map(int_to_float)
+  }
+  let exponent_result = int.parse(strip_leading_plus(exponent_text))
+  case mantissa_result, exponent_result {
+    Ok(m), Ok(e) ->
+      case e >= -max_float_exponent && e <= max_float_exponent {
+        True -> Ok(m *. power_of_ten(e))
+        False -> Error(Nil)
+      }
+    _, _ -> Error(Nil)
+  }
+}
+
+fn strip_leading_plus(text: String) -> String {
+  case string.starts_with(text, "+") {
+    True -> string.drop_start(text, 1)
+    False -> text
+  }
+}
+
+fn result_map(r: Result(a, e), f: fn(a) -> b) -> Result(b, e) {
+  case r {
+    Ok(v) -> Ok(f(v))
+    Error(e) -> Error(e)
+  }
+}
+
+fn int_to_float(i: Int) -> Float {
+  int.to_float(i)
+}
+
+fn power_of_ten(n: Int) -> Float {
+  case n {
+    0 -> 1.0
+    _ if n > 0 -> 10.0 *. power_of_ten(n - 1)
+    _ -> 0.1 *. power_of_ten(n + 1)
+  }
+}

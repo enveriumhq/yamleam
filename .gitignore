@@ -1,0 +1,12 @@
+*.beam
+*.ez
+/build
+erl_crash.dump
+
+.github
+
+.vscode
+.claude
+.codex
+
+.dump
