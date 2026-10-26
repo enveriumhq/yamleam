@@ -81,6 +81,46 @@ spec:
   yamleam.parse_raw(indented) |> should.equal(Ok(tree))
 }
 
+// ── JSON is YAML ────────────────────────────────────────────────────────────
+
+fn package_name(json: String) -> Result(String, yamleam.YamlError) {
+  yamleam.parse(json, decode.at(["name"], decode.string))
+}
+
+pub fn json_is_yaml_test() {
+  let json =
+    "{
+  \"name\": \"yamleam\",
+  \"keywords\": [\"yaml\", \"gleam\"],
+  \"author\": {\"city\": \"S\\u00e3o Paulo\"}
+}"
+  package_name(json) |> should.equal(Ok("yamleam"))
+
+  let assert Ok(YamlMap([_, _, #("author", author)])) = yamleam.parse_raw(json)
+  author |> should.equal(YamlMap([#("city", YamlString("São Paulo"))]))
+}
+
+pub fn flow_across_lines_test() {
+  yamleam.parse_raw(
+    "
+args: [
+  --port=8080,
+  --verbose,
+]
+",
+  )
+  |> should.equal(
+    Ok(
+      YamlMap([
+        #(
+          "args",
+          YamlList([YamlString("--port=8080"), YamlString("--verbose")]),
+        ),
+      ]),
+    ),
+  )
+}
+
 // ── Multi-document streams ──────────────────────────────────────────────────
 
 const stream = "

@@ -30,6 +30,7 @@ import yamleam/node.{
   type YamlNode, YamlBool, YamlFloat, YamlInt, YamlList, YamlMap, YamlNull,
   YamlString,
 }
+import yamleam/position.{type Position}
 import yamleam/scalar
 import yamleam/token.{
   type Line, type Token, AliasMarker, AnchorMarker, Colon, Comma, Dash,
@@ -708,8 +709,10 @@ fn parse_flow_map(
       case first.kind {
         FlowMapEnd -> Ok(#(YamlMap(list.reverse(acc)), rest, anchors))
         Comma -> parse_flow_map(rest, line_num, acc, anchors)
-        PlainScalar(k) -> parse_flow_map_entry(k, rest, line_num, acc, anchors)
-        QuotedScalar(k) -> parse_flow_map_entry(k, rest, line_num, acc, anchors)
+        PlainScalar(k) ->
+          parse_flow_map_entry(k, first.position, rest, line_num, acc, anchors)
+        QuotedScalar(k) ->
+          parse_flow_map_entry(k, first.position, rest, line_num, acc, anchors)
         _ ->
           Error(ParseError(
             message: "expected key in flow mapping",
@@ -722,6 +725,7 @@ fn parse_flow_map(
 
 fn parse_flow_map_entry(
   key: String,
+  key_position: Position,
   after_key: List(Token),
   line_num: Int,
   acc: List(#(String, YamlNode)),
@@ -736,8 +740,8 @@ fn parse_flow_map_entry(
             Ok(_) ->
               Error(ParseError(
                 message: "duplicate mapping key '" <> key <> "' in flow mapping",
-                line: line_num,
-                column: 1,
+                line: key_position.line,
+                column: key_position.column,
               ))
             Error(_) ->
               parse_flow_map(
@@ -751,8 +755,8 @@ fn parse_flow_map_entry(
     _ ->
       Error(ParseError(
         message: "expected ':' after key '" <> key <> "' in flow mapping",
-        line: line_num,
-        column: 1,
+        line: key_position.line,
+        column: key_position.column,
       ))
   }
 }

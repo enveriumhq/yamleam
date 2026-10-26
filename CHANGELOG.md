@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.2.0] — multi-line flow collections, JSON documents
+
+### Added
+
+- Flow collections may span several lines. `[` and `{` open on one line and close on a later one, with comments and blank lines allowed in between. Every token keeps its own position, so errors inside the collection point at their own line.
+- JSON documents parse as YAML 1.2 intends, whether pretty-printed or compact. Inside flow context, a `:` directly after a quoted key or a closed collection is a value indicator even with no space after it (`{"a":1}`).
+- `\u` escapes combine UTF-16 surrogate pairs (`\ud83d\ude00` is 😀), as JSON writes characters past U+FFFF. A lone surrogate is still a `ParseError`.
+
+### Changed
+
+- Flow-mapping errors for duplicate keys and a missing `:` report the key's own line and column.
+- A `---` or `...` line inside an open flow collection is a `ParseError`.
+
 ## [1.1.0] — compact sequences, complete escapes
 
 ### Added

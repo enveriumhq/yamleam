@@ -243,13 +243,13 @@ fn tokenize_content_ml(
   extra_consumed: Int,
 ) -> Result(#(List(Token), Option(PendingBlock), List(String), Int), YamlError) {
   case graphemes {
-    [] -> Ok(#(list.reverse(acc), None, rest_raw, extra_consumed))
+    [] -> end_of_line(line_num, flow_depth, acc, rest_raw, extra_consumed)
 
     // Whitespace between tokens
     [" ", ..rest] -> tokenize_content_ml(rest, line_num, col + 1, flow_depth, acc, rest_raw, extra_consumed)
 
     // Inline comment terminator
-    ["#", ..] -> Ok(#(list.reverse(acc), None, rest_raw, extra_consumed))
+    ["#", ..] -> end_of_line(line_num, flow_depth, acc, rest_raw, extra_consumed)
 
     // Dash — sequence item marker (only if followed by space or EOL
     // and only in block context; inside flow, `-` is plain content)
@@ -265,9 +265,9 @@ fn tokenize_content_ml(
 
     // Colon — mapping separator
     // Block context: must be followed by whitespace or EOL
-    // Flow context: same rule (we still require space after : for clarity)
+    // Flow context: the same, or directly after a JSON-like node
     [":", ..rest] ->
-      case is_separator_followup(rest) {
+      case is_separator_followup(rest) || follows_json_node(flow_depth, acc) {
         True -> {
           let tok = Token(kind: Colon, position: Position(line_num, col))
           tokenize_content_ml(rest, line_num, col + 1, flow_depth, [tok, ..acc], rest_raw, extra_consumed)
@@ -427,6 +427,60 @@ fn tokenize_content_ml(
 
     // Anything else: plain scalar
     _ -> read_plain_then_continue_ml(graphemes, line_num, col, flow_depth, acc, rest_raw, extra_consumed)
+  }
+}
+
+/// End of a source line. Outside flow context the logical line ends here.
+/// Inside an open flow collection, tokenizing continues on the next source
+/// line, so a collection spanning several lines becomes one logical line
+/// whose tokens keep their own positions. Blank and comment-only lines
+/// inside the collection are skipped; a document marker is an error.
+fn end_of_line(
+  line_num: Int,
+  flow_depth: Int,
+  acc: List(Token),
+  rest_raw: List(String),
+  extra_consumed: Int,
+) -> Result(#(List(Token), Option(PendingBlock), List(String), Int), YamlError) {
+  case flow_depth > 0, rest_raw {
+    False, _ | True, [] ->
+      Ok(#(list.reverse(acc), None, rest_raw, extra_consumed))
+    True, [next_line, ..rest_rest] -> {
+      let next_num = line_num + 1
+      let trimmed = string.trim_start(next_line)
+      let graphemes = string.to_graphemes(trimmed)
+      let indent_len = string.length(next_line) - string.length(trimmed)
+      case indent_len, try_document_marker(graphemes, next_num) {
+        0, Some(_) ->
+          Error(ParseError(
+            message: "document marker inside flow collection; close it with ']' or '}' first",
+            line: next_num,
+            column: 1,
+          ))
+        _, _ ->
+          tokenize_content_ml(
+            graphemes,
+            next_num,
+            indent_len + 1,
+            flow_depth,
+            acc,
+            rest_rest,
+            extra_consumed + 1,
+          )
+      }
+    }
+  }
+}
+
+/// Inside flow context, a `:` directly after a JSON-like node (a quoted
+/// scalar or a closed flow collection) is a value indicator even with no
+/// space after it (YAML 1.2 §7.4.2), so `{"a":1}` reads as JSON does.
+fn follows_json_node(flow_depth: Int, acc: List(Token)) -> Bool {
+  case flow_depth > 0, acc {
+    True, [Token(kind: QuotedScalar(_), ..), ..] -> True
+    True, [Token(kind: FlowSeqEnd, ..), ..] -> True
+    True, [Token(kind: FlowMapEnd, ..), ..] -> True
+    _, _ -> False
   }
 }
 
@@ -711,36 +765,79 @@ fn decode_escape(
     ["L", ..rest] -> Ok(#("\u{2028}", rest, 1))
     ["P", ..rest] -> Ok(#("\u{2029}", rest, 1))
     ["x", ..rest] -> decode_code_point(rest, 2)
-    ["u", ..rest] -> decode_code_point(rest, 4)
+    ["u", ..rest] ->
+      case decode_hex(rest, 4) {
+        Ok(#(high, after)) if high >= 0xD800 && high <= 0xDBFF ->
+          decode_surrogate_pair(high, after)
+        Ok(#(value, after)) -> code_point_text(value, after, 5)
+        Error(Nil) -> Error(Nil)
+      }
     ["U", ..rest] -> decode_code_point(rest, 8)
     _ -> Error(Nil)
   }
 }
 
-/// Decode the `digits` hex digits of a `\x`, `\u` or `\U` escape into
-/// the character they name. Surrogates and values past U+10FFFF are
-/// rejected.
+/// Decode the `digits` hex digits of a `\x` or `\U` escape into the
+/// character they name.
 fn decode_code_point(
   graphemes: List(String),
   digits: Int,
 ) -> Result(#(String, List(String), Int), Nil) {
+  case decode_hex(graphemes, digits) {
+    Ok(#(value, after)) -> code_point_text(value, after, 1 + digits)
+    Error(Nil) -> Error(Nil)
+  }
+}
+
+/// JSON writes characters past U+FFFF as a UTF-16 surrogate pair, such
+/// as `\uD83D\uDE00`. Combine a high surrogate with the low surrogate
+/// escape that must follow it; a lone surrogate is rejected.
+fn decode_surrogate_pair(
+  high: Int,
+  graphemes: List(String),
+) -> Result(#(String, List(String), Int), Nil) {
+  case graphemes {
+    ["\\", "u", ..rest] ->
+      case decode_hex(rest, 4) {
+        Ok(#(low, after)) if low >= 0xDC00 && low <= 0xDFFF ->
+          code_point_text(
+            0x10000 + { high - 0xD800 } * 0x400 + { low - 0xDC00 },
+            after,
+            11,
+          )
+        _ -> Error(Nil)
+      }
+    _ -> Error(Nil)
+  }
+}
+
+/// Read exactly `digits` hex digits as an integer.
+fn decode_hex(
+  graphemes: List(String),
+  digits: Int,
+) -> Result(#(Int, List(String)), Nil) {
   let hex = list.take(graphemes, digits)
   case list.length(hex) == digits && list.all(hex, is_hex_digit) {
     False -> Error(Nil)
     True ->
       case int.base_parse(string.join(hex, ""), 16) {
+        Ok(value) -> Ok(#(value, list.drop(graphemes, digits)))
         Error(_) -> Error(Nil)
-        Ok(value) ->
-          case string.utf_codepoint(value) {
-            Error(_) -> Error(Nil)
-            Ok(codepoint) ->
-              Ok(#(
-                string.from_utf_codepoints([codepoint]),
-                list.drop(graphemes, digits),
-                1 + digits,
-              ))
-          }
       }
+  }
+}
+
+/// The character for code point `value`, after an escape `width`
+/// graphemes long. Surrogates and values past U+10FFFF are rejected.
+fn code_point_text(
+  value: Int,
+  after: List(String),
+  width: Int,
+) -> Result(#(String, List(String), Int), Nil) {
+  case string.utf_codepoint(value) {
+    Ok(codepoint) ->
+      Ok(#(string.from_utf_codepoints([codepoint]), after, width))
+    Error(_) -> Error(Nil)
   }
 }
 
