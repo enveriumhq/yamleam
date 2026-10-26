@@ -255,8 +255,8 @@ Quoted scalars are always strings, so `"123"` is `YamlString("123")`.
 
 ### Not yet supported
 
-Each of these returns an explicit error today. Most of them are on the
-[roadmap](ROADMAP.md).
+Each of these is handled explicitly today, with an error or, for the number
+forms, a plain string. Most of them are on the [roadmap](ROADMAP.md).
 
 | Feature | Today | Until it lands |
 |---|---|---|
