@@ -180,6 +180,26 @@ fn parse_block(
   }
 }
 
+/// Parse the nested value of a mapping entry whose key sits at column
+/// `key_indent` and has nothing after its `:`. The value is a block
+/// indented past the key, or a compact block sequence whose dashes sit at
+/// the key's own column (YAML 1.2 §8.2.1), as in
+///
+///     steps:
+///     - run: make
+fn parse_entry_value(
+  lines: List(Line),
+  key_indent: Int,
+  anchors: Anchors,
+) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+  case lines {
+    [Line(indent: indent, tokens: [Token(kind: Dash, ..), ..], ..), ..]
+      if indent == key_indent
+    -> parse_sequence(lines, key_indent, anchors)
+    _ -> parse_block(lines, key_indent + 1, anchors)
+  }
+}
+
 fn dispatch_block(
   lines: List(Line),
   first: Line,
@@ -343,7 +363,7 @@ fn consume_mapping_value(
   case value_tokens {
     [] -> {
       // Nested value comes from subsequent indented lines
-      case parse_block(rest, indent + 1, anchors) {
+      case parse_entry_value(rest, indent, anchors) {
         Error(e) -> Error(e)
         Ok(#(value, after, anchors2)) ->
           add_mapping_entry(
@@ -362,7 +382,7 @@ fn consume_mapping_value(
     //   key: &name
     //     nested: value
     [Token(kind: AnchorMarker(name), ..)] -> {
-      case parse_block(rest, indent + 1, anchors) {
+      case parse_entry_value(rest, indent, anchors) {
         Error(e) -> Error(e)
         Ok(#(value, after, anchors2)) -> {
           let anchors3 = anchor_table.set(anchors2, name, value)
@@ -913,7 +933,7 @@ fn parse_inline_mapping_item(
   case value_tokens {
     [] ->
       // Nested value for this first key — read it from rest_lines
-      case parse_block(rest_lines, mapping_indent + 1, anchors) {
+      case parse_entry_value(rest_lines, mapping_indent, anchors) {
         Error(e) -> Error(e)
         Ok(#(value, after_value, anchors2)) ->
           start_inline_mapping(
@@ -1036,7 +1056,7 @@ fn consume_inline_mapping_value(
 ) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
   case value_tokens {
     [] -> {
-      case parse_block(rest, mapping_indent + 1, anchors) {
+      case parse_entry_value(rest, mapping_indent, anchors) {
         Error(e) -> Error(e)
         Ok(#(value, after, anchors2)) ->
           add_inline_mapping_entry(
@@ -1052,7 +1072,7 @@ fn consume_inline_mapping_value(
       }
     }
     [Token(kind: AnchorMarker(name), ..)] -> {
-      case parse_block(rest, mapping_indent + 1, anchors) {
+      case parse_entry_value(rest, mapping_indent, anchors) {
         Error(e) -> Error(e)
         Ok(#(value, after, anchors2)) -> {
           let anchors3 = anchor_table.set(anchors2, name, value)

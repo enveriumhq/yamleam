@@ -15,6 +15,7 @@
 //// depth so they only act as terminators inside flow context. Tabs in
 //// indentation are rejected, and tags (`!`) return `Unsupported`.
 
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -295,7 +296,7 @@ fn tokenize_content_ml(
 
     // Double-quoted string (supports multi-line via rest_raw)
     ["\"", ..rest] ->
-      case read_double_quoted_ml(rest, line_num, col + 1, [], rest_raw, extra_consumed) {
+      case read_double_quoted_ml(rest, line_num, col + 1, [], [], rest_raw, extra_consumed) {
         Error(e) -> Error(e)
         Ok(#(text, remaining, new_col, new_rest_raw, new_extra)) -> {
           let tok =
@@ -419,7 +420,7 @@ fn tokenize_content_ml(
 
     ["!", ..] ->
       Error(Unsupported(
-        feature: "tags ('!type') — planned for v0.6",
+        feature: "tags ('!type')",
         line: line_num,
         column: col,
       ))
@@ -571,65 +572,191 @@ fn read_single_quoted(
 
 /// Multi-line aware double-quoted string reader.
 /// When the closing `"` is not found on the current line, consumes the next
-/// raw line from `rest_raw`, folds the line break into a space (per YAML 1.2
-/// §6.5 "Line Folding"), and continues scanning.
+/// raw line from `rest_raw`, folds the line break (per YAML 1.2 §7.3.1),
+/// and continues scanning.
+///
+/// `white` holds the literal spaces and tabs seen since the last content
+/// character, most recent first. They join `acc` when more content follows
+/// on the same line, and are dropped at a line break, because folding
+/// excludes trailing white space.
 fn read_double_quoted_ml(
   remaining: List(String),
   line_num: Int,
   col: Int,
   acc: List(String),
+  white: List(String),
   rest_raw: List(String),
   extra_consumed: Int,
 ) -> Result(#(String, List(String), Int, List(String), Int), YamlError) {
   case remaining {
-    [] ->
-      // End of current line — try to consume next raw line
-      case rest_raw {
-        [] ->
+    // End of current line — fold the break into a space
+    [] -> fold_double_quoted(line_num, col, acc, " ", rest_raw, extra_consumed)
+    // Escaped line break — join with the next line, no space
+    ["\\"] ->
+      fold_double_quoted(
+        line_num,
+        col,
+        list.append(white, acc),
+        "",
+        rest_raw,
+        extra_consumed,
+      )
+    ["\\", ..rest] ->
+      case decode_escape(rest) {
+        Ok(#(text, after, width)) ->
+          read_double_quoted_ml(
+            after,
+            line_num,
+            col + 1 + width,
+            [text, ..list.append(white, acc)],
+            [],
+            rest_raw,
+            extra_consumed,
+          )
+        Error(Nil) ->
           Error(ParseError(
-            message: "unterminated double-quoted string",
+            message: "invalid escape '\\"
+              <> first_or_empty(rest)
+              <> "' in double-quoted string",
             line: line_num,
             column: col,
           ))
-        [next_line, ..rest_rest] -> {
-          // YAML 1.2 §6.5: a line break inside a double-quoted scalar is
-          // folded to a single space (unless preceded by a backslash escape).
-          // Leading whitespace on the continuation line is trimmed.
-          let trimmed = string.trim_start(next_line)
-          let next_graphemes = string.to_graphemes(trimmed)
+      }
+    ["\"", ..rest] -> {
+      let text = list.append(white, acc) |> list.reverse |> string.join("")
+      Ok(#(text, rest, col + 1, rest_raw, extra_consumed))
+    }
+    [" " as c, ..rest] | ["\t" as c, ..rest] ->
+      read_double_quoted_ml(rest, line_num, col + 1, acc, [c, ..white], rest_raw, extra_consumed)
+    [c, ..rest] ->
+      read_double_quoted_ml(rest, line_num, col + 1, [c, ..list.append(white, acc)], [], rest_raw, extra_consumed)
+  }
+}
+
+/// Fold a line break inside a double-quoted string (YAML 1.2 §7.3.1).
+/// Consumes the next raw line along with any empty lines before it. Each
+/// empty line becomes a `\n`; with none, the break becomes `separator`
+/// (a space, or nothing after an escaped line break). Leading white space
+/// on the continuation line is dropped.
+fn fold_double_quoted(
+  line_num: Int,
+  col: Int,
+  acc: List(String),
+  separator: String,
+  rest_raw: List(String),
+  extra_consumed: Int,
+) -> Result(#(String, List(String), Int, List(String), Int), YamlError) {
+  case rest_raw {
+    [] ->
+      Error(ParseError(
+        message: "unterminated double-quoted string",
+        line: line_num,
+        column: col,
+      ))
+    [next_line, ..rest_rest] -> {
+      let trimmed = string.trim_start(next_line)
+      case trimmed {
+        "" ->
+          fold_double_quoted(
+            line_num + 1,
+            1,
+            ["\n", ..acc],
+            "",
+            rest_rest,
+            extra_consumed + 1,
+          )
+        _ -> {
           let indent_len = string.length(next_line) - string.length(trimmed)
+          let acc2 = case separator {
+            "" -> acc
+            _ -> [separator, ..acc]
+          }
           read_double_quoted_ml(
-            next_graphemes,
+            string.to_graphemes(trimmed),
             line_num + 1,
             indent_len + 1,
-            [" ", ..acc],
+            acc2,
+            [],
             rest_rest,
             extra_consumed + 1,
           )
         }
       }
-    ["\\", c, ..rest] -> {
-      let escaped = decode_escape(c)
-      read_double_quoted_ml(rest, line_num, col + 2, [escaped, ..acc], rest_raw, extra_consumed)
     }
-    ["\"", ..rest] -> {
-      let text = acc |> list.reverse |> string.join("")
-      Ok(#(text, rest, col + 1, rest_raw, extra_consumed))
-    }
-    [c, ..rest] -> read_double_quoted_ml(rest, line_num, col + 1, [c, ..acc], rest_raw, extra_consumed)
   }
 }
 
-fn decode_escape(c: String) -> String {
+/// Decode the escape sequence after a `\` in a double-quoted string
+/// (YAML 1.2 §5.7). Returns the decoded text, the graphemes after the
+/// sequence, and how many graphemes the sequence used.
+fn decode_escape(
+  graphemes: List(String),
+) -> Result(#(String, List(String), Int), Nil) {
+  case graphemes {
+    ["0", ..rest] -> Ok(#("\u{0000}", rest, 1))
+    ["a", ..rest] -> Ok(#("\u{0007}", rest, 1))
+    ["b", ..rest] -> Ok(#("\u{0008}", rest, 1))
+    ["t", ..rest] | ["\t", ..rest] -> Ok(#("\t", rest, 1))
+    ["n", ..rest] -> Ok(#("\n", rest, 1))
+    ["v", ..rest] -> Ok(#("\u{000B}", rest, 1))
+    ["f", ..rest] -> Ok(#("\u{000C}", rest, 1))
+    ["r", ..rest] -> Ok(#("\r", rest, 1))
+    ["e", ..rest] -> Ok(#("\u{001B}", rest, 1))
+    [" ", ..rest] -> Ok(#(" ", rest, 1))
+    ["\"", ..rest] -> Ok(#("\"", rest, 1))
+    ["/", ..rest] -> Ok(#("/", rest, 1))
+    ["\\", ..rest] -> Ok(#("\\", rest, 1))
+    ["N", ..rest] -> Ok(#("\u{0085}", rest, 1))
+    ["_", ..rest] -> Ok(#("\u{00A0}", rest, 1))
+    ["L", ..rest] -> Ok(#("\u{2028}", rest, 1))
+    ["P", ..rest] -> Ok(#("\u{2029}", rest, 1))
+    ["x", ..rest] -> decode_code_point(rest, 2)
+    ["u", ..rest] -> decode_code_point(rest, 4)
+    ["U", ..rest] -> decode_code_point(rest, 8)
+    _ -> Error(Nil)
+  }
+}
+
+/// Decode the `digits` hex digits of a `\x`, `\u` or `\U` escape into
+/// the character they name. Surrogates and values past U+10FFFF are
+/// rejected.
+fn decode_code_point(
+  graphemes: List(String),
+  digits: Int,
+) -> Result(#(String, List(String), Int), Nil) {
+  let hex = list.take(graphemes, digits)
+  case list.length(hex) == digits && list.all(hex, is_hex_digit) {
+    False -> Error(Nil)
+    True ->
+      case int.base_parse(string.join(hex, ""), 16) {
+        Error(_) -> Error(Nil)
+        Ok(value) ->
+          case string.utf_codepoint(value) {
+            Error(_) -> Error(Nil)
+            Ok(codepoint) ->
+              Ok(#(
+                string.from_utf_codepoints([codepoint]),
+                list.drop(graphemes, digits),
+                1 + digits,
+              ))
+          }
+      }
+  }
+}
+
+fn is_hex_digit(c: String) -> Bool {
   case c {
-    "n" -> "\n"
-    "t" -> "\t"
-    "r" -> "\r"
-    "\"" -> "\""
-    "\\" -> "\\"
-    "/" -> "/"
-    "0" -> "\u{0000}"
-    _ -> c
+    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" -> True
+    "a" | "b" | "c" | "d" | "e" | "f" -> True
+    "A" | "B" | "C" | "D" | "E" | "F" -> True
+    _ -> False
+  }
+}
+
+fn first_or_empty(graphemes: List(String)) -> String {
+  case graphemes {
+    [c, ..] -> c
+    [] -> ""
   }
 }
 
