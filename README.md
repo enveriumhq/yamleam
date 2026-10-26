@@ -11,9 +11,9 @@ already use for JSON.
   whole setup.
 - **Feels like `gleam_json`.** `yamleam.parse(source, decoder)` takes a standard
   decoder, so decoders written for JSON work on YAML unchanged.
-- **Real-world YAML.** Block and flow collections, compact lists, literal and
-  folded block scalars, anchors, aliases and merge keys, and multi-document
-  streams.
+- **Real-world YAML, and JSON too.** Block and flow collections, compact
+  lists, literal and folded block scalars, anchors, aliases and merge keys,
+  multi-document streams, and JSON documents.
 - **YAML 1.2 semantics.** `no`, `off` and `0777` stay exactly as written: no
   Norway problem, no surprise octals.
 - **Explicit errors.** Invalid input returns a typed error with its line and
@@ -23,7 +23,7 @@ already use for JSON.
 yamleam handles the YAML that runs services and pipelines: Kubernetes manifests,
 `kubectl get -o yaml` output and multi-resource bundles, Helm values, GitHub
 Actions workflows, GitLab CI pipelines that reuse settings through anchors and
-merge keys, docker-compose files, application config, and rulesets.
+merge keys, docker-compose files, application config, rulesets, and plain JSON.
 
 ## Installation
 
@@ -108,6 +108,37 @@ spec:
 
 This parses to the same tree as the indented form, so either style decodes the
 same way.
+
+### JSON is YAML
+
+YAML 1.2 was designed to read JSON. yamleam parses JSON documents, whether
+pretty-printed or compact, with the same decoders:
+
+```json
+{
+  "name": "yamleam",
+  "keywords": ["yaml", "gleam"],
+  "author": {"city": "S\u00e3o Paulo"}
+}
+```
+
+```gleam
+import gleam/dynamic/decode
+import yamleam
+
+pub fn package_name(json: String) -> Result(String, yamleam.YamlError) {
+  yamleam.parse(json, decode.at(["name"], decode.string))
+}
+```
+
+Flow collections in YAML files may span lines the same way:
+
+```yaml
+args: [
+  --port=8080,
+  --verbose,
+]
+```
 
 ### Multi-document streams
 
@@ -216,7 +247,8 @@ pub fn describe(source: String) -> String {
 | Area | Supported |
 |---|---|
 | Structure | Block mappings (`key: value`), block sequences (`- item`), indented or compact, nesting to any depth, comments |
-| Flow collections | `[1, 2, 3]` and `{a: 1, b: 2}` on a line, nested, inside block context |
+| Flow collections | `[1, 2, 3]` and `{a: 1, b: 2}`, on one line or across several, nested, inside block context |
+| JSON | Pretty-printed and compact documents (`{"a":1}`), `\uXXXX` escapes and surrogate pairs |
 | Plain scalars | Null, booleans, decimal integers, decimal floats with exponents, strings |
 | Quoted strings | Single-quoted (`''` escape); double-quoted with every YAML 1.2 escape (`\n`, `\t`, `\"`, `\x41`, `\u00e9`, `\U0001F600`, …), folding across lines |
 | Block scalars | Literal (`\|`, `\|-`, `\|+`) and folded (`>`, `>-`, `>+`), indentation auto-detected |
@@ -264,7 +296,6 @@ forms, a plain string. Most of them are on the [roadmap](ROADMAP.md).
 
 | Feature | Today | Until it lands |
 |---|---|---|
-| Flow collections spanning several lines | `ParseError` | Keep `[…]` / `{…}` on one line; arriving in 1.2 |
 | Plain or single-quoted scalars spanning several lines | `ParseError` | Use `\|`, `>` or a double-quoted string |
 | Tags (`!!str`, `!Custom`) | `Unsupported` | Planned |
 | Explicit indentation indicators (`\|2`, `>+1`) | `ParseError` | Auto-detection covers the usual case |
@@ -287,8 +318,8 @@ as you would for any parser of untrusted data.
 
 ## Roadmap
 
-[ROADMAP.md](ROADMAP.md) has what's next: multi-line flow collections and JSON
-documents in 1.2, then tags and the remaining core-schema forms.
+[ROADMAP.md](ROADMAP.md) has what's next: core-schema tags and integers,
+explicit indentation indicators, multi-line plain scalars, and complex keys.
 
 ## Contributing
 

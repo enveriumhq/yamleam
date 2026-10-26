@@ -42,7 +42,7 @@ YAML that services and pipelines run on:
   `\x`, `\U`, `\b`, `\f` and escaped line breaks. Unknown escapes become
   explicit errors.
 
-## 1.2: multi-line flow and JSON
+## 1.2: multi-line flow and JSON (shipped)
 
 - **Flow collections across lines:** `[` and `{` collections that open on one
   line and close on another.

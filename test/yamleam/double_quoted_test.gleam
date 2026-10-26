@@ -114,3 +114,14 @@ pub fn unterminated_string_is_rejected_test() {
   let assert Error(ParseError(message: "unterminated double-quoted string", ..)) =
     value("\"never closed\n  still open")
 }
+
+pub fn json_surrogate_pair_test() {
+  value("\"\\ud83d\\ude00 and \\uD83D\\uDC4D\"")
+  |> should.equal(Ok("😀 and 👍"))
+}
+
+pub fn lone_surrogates_are_rejected_test() {
+  let assert Error(ParseError(..)) = value("\"\\ud83d\"")
+  let assert Error(ParseError(..)) = value("\"\\ud83d\\u0041\"")
+  let assert Error(ParseError(..)) = value("\"\\ude00\"")
+}
