@@ -1,7 +1,8 @@
-//// YAML parser — block-style only.
+//// YAML parser.
 ////
 //// Consumes the `List(Line)` produced by the lexer and constructs a
-//// `YamlNode` tree. Recursive descent with indent-column tracking.
+//// `YamlNode` tree. Recursive descent with indent-column tracking for
+//// block structure, and a token-level descent for flow collections.
 ////
 //// Three families of blocks:
 //// - Mappings (lines whose first tokens are `key: ...`)

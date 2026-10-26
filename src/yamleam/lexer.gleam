@@ -1,23 +1,19 @@
-//// YAML lexer — line-oriented, block-style.
+//// YAML lexer — line-oriented.
 ////
 //// Splits the source into lines, drops blank/comment-only lines, and
 //// tokenizes each remaining line into a `Line(indent, line_number, tokens)`.
 //// The parser consumes the resulting `List(Line)` using indent comparison.
 ////
-//// v0.2 additions:
-//// - **Literal block scalars (`|`)** with chomping indicators (`|`,
-////   `|-`, `|+`). When the lexer sees `|` at end-of-line position, it
-////   reads continuation lines from the source until indent returns to
-////   the parent level, then emits a `QuotedScalar` token containing
-////   the joined block content with chomping applied.
+//// Constructs that span several source lines become a single token:
+//// - **Block scalars** (`|`, `>`, with `-`/`+` chomping). When the lexer
+////   sees an opener at end-of-line position, it reads continuation lines
+////   until indent returns to the parent level, then emits a
+////   `QuotedScalar` token with folding and chomping applied.
+//// - **Double-quoted strings** that continue onto following lines.
 ////
-//// v0.1 limitations still in force:
-//// - Multi-line quoted strings rejected (single- and double-quoted
-////   strings must open and close on the same source line)
-//// - Tabs in indentation rejected
-//// - Flow-style markers (`[`, `]`, `{`, `}`), anchors (`&`, `*`),
-////   folded scalars (`>`), tags (`!`) all return `Unsupported` errors
-////   with the version they're targeted for
+//// Flow indicators (`[`, `]`, `{`, `}`, `,`) are tracked with a flow
+//// depth so they only act as terminators inside flow context. Tabs in
+//// indentation are rejected, and tags (`!`) return `Unsupported`.
 
 import gleam/list
 import gleam/option.{type Option, None, Some}

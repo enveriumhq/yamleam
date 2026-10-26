@@ -1,8 +1,13 @@
-//// yamleam — a pure-Gleam YAML parser.
+//// yamleam — a pure-Gleam YAML 1.2 parser.
 ////
-//// Public API. Implementation lives under `src/yamleam/`. See README.md
-//// and ROADMAP.md for the supported subset, the planned coverage, and
-//// the design philosophy.
+//// Parse YAML into a typed `YamlNode` tree with `parse_raw`, or decode it
+//// into your own types with `parse` and a standard `gleam/dynamic/decode`
+//// decoder, the same kind `gleam_json` takes. `parse_documents` and
+//// `parse_documents_raw` read multi-document streams.
+////
+//// Pattern-match the tree with the constructors in `yamleam/node`, and
+//// errors with those in `yamleam/error`. The README has the feature
+//// reference and the scalar resolution rules.
 
 import gleam/dynamic/decode
 import gleam/list
@@ -52,9 +57,9 @@ pub fn yaml_map(pairs: List(#(String, YamlNode))) -> YamlNode {
 
 /// Parse a YAML source string into a typed `YamlNode` tree.
 ///
-/// Returns a `ParseError` for invalid YAML or an `Unsupported` error for
-/// features yamleam does not yet implement. Multi-document streams are
-/// rejected; use `parse_documents_raw` for those.
+/// Returns a `ParseError` for invalid YAML, or an `Unsupported` error that
+/// names a feature outside the supported set. Reads exactly one document;
+/// use `parse_documents_raw` for multi-document streams.
 pub fn parse_raw(source: String) -> Result(YamlNode, YamlError) {
   case lexer.tokenize(source) {
     Error(e) -> Error(e)
@@ -66,8 +71,8 @@ pub fn parse_raw(source: String) -> Result(YamlNode, YamlError) {
 ///
 /// The decoder is a standard `gleam/dynamic/decode.Decoder(a)`, the same
 /// type used by `gleam_json.parse`. Decoders written for JSON sources
-/// can be reused unchanged against YAML sources. Multi-document streams
-/// are rejected; use `parse_documents` for those.
+/// can be reused unchanged against YAML sources. Reads exactly one
+/// document; use `parse_documents` for multi-document streams.
 pub fn parse(source: String, decoder: decode.Decoder(a)) -> Result(a, YamlError) {
   case parse_raw(source) {
     Error(e) -> Error(e)
