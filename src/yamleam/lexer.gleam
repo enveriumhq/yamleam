@@ -58,8 +58,21 @@ type PendingBlock {
 
 /// Tokenize a YAML source string into a list of logical lines.
 pub fn tokenize(source: String) -> Result(List(Line), YamlError) {
-  let raw_lines = string.split(source, on: "\n")
+  let raw_lines = string.split(normalize_source(source), on: "\n")
   do_tokenize_lines(raw_lines, 1, [])
+}
+
+/// Drop a leading byte order mark and normalize CRLF and CR line breaks
+/// to LF (YAML 1.2 §5.2 and §5.4), so files saved on Windows read the
+/// same as any other.
+fn normalize_source(source: String) -> String {
+  let without_bom = case source {
+    "\u{FEFF}" <> rest -> rest
+    _ -> source
+  }
+  without_bom
+  |> string.replace(each: "\r\n", with: "\n")
+  |> string.replace(each: "\r", with: "\n")
 }
 
 fn do_tokenize_lines(

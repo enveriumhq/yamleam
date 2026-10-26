@@ -1,6 +1,7 @@
 name = "yamleam"
 version = "1.1.0"
 target = "erlang"
+gleam = ">= 1.9.0"
 
 description = "A pure-Gleam YAML 1.2 parser with gleam_json-style decoders."
 
@@ -13,7 +14,7 @@ links = [
 ]
 
 [dependencies]
-gleam_stdlib = ">= 0.46.0 and < 2.0.0"
+gleam_stdlib = ">= 0.60.0 and < 2.0.0"
 
 [dev_dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"
