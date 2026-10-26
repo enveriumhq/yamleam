@@ -123,7 +123,8 @@ args: [
 
 // ── Multi-document streams ──────────────────────────────────────────────────
 
-const stream = "
+const stream =
+  "
 ---
 kind: ConfigMap
 name: app-config

@@ -31,6 +31,9 @@ merge keys, docker-compose files, application config, rulesets, and plain JSON.
 gleam add yamleam
 ```
 
+yamleam works with Gleam 1.9 or later and `gleam_stdlib` 0.60 or later, on the
+Erlang target.
+
 ## Quick start
 
 ```gleam
@@ -252,6 +255,7 @@ pub fn describe(source: String) -> String {
 | Reuse | Anchors (`&name`), aliases (`*name`), merge keys (`<<: *base`, `<<: [*a, *b]`) |
 | Streams | Multi-document streams with `---` and `...` markers |
 | Validation | Duplicate mapping keys are rejected, as YAML 1.2 requires |
+| Input | UTF-8 with or without a byte order mark; LF, CRLF or CR line endings |
 
 ### Scalar resolution
 
@@ -336,6 +340,16 @@ gleam test       # Run the test suite
 gleam build      # Compile the library
 gleam docs build # Build the HTML docs
 ```
+
+`.tool-versions` pins the toolchain we develop on (the latest Gleam and
+Erlang/OTP), for mise or asdf.
+
+### Compatibility
+
+`gleam.toml` declares the oldest Gleam and `gleam_stdlib` versions yamleam
+supports. Each release is tested on both that minimum and the latest toolchain.
+Raising the minimum is reserved for a minor release and noted in the
+changelog; a patch release never raises it.
 
 ## License
 
