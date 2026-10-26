@@ -1,6 +1,6 @@
 //// Token type emitted by the lexer.
 ////
-//// yamleam v0.1 uses a line-oriented lexer: each logical (non-blank,
+//// yamleam uses a line-oriented lexer: each logical (non-blank,
 //// non-comment) line is converted into a list of tokens together with
 //// the line's indent column. The parser consumes these line-token groups.
 

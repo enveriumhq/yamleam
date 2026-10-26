@@ -1,76 +1,36 @@
 # yamleam
 
-A **pure-Gleam YAML parser**.
+[![Package Version](https://img.shields.io/hexpm/v/yamleam)](https://hex.pm/packages/yamleam)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/yamleam/)
 
-The library aims to be a functionally correct implementation of the spec for the sections widely used in, broadly speaking, "commercial, service and operations" fields. For perspective, we aimed version **0.1** to cover 95%+ of the YAML files people actually write, including Kubernetes manifests without anchors, GitHub Actions workflows, Helm values files, docker-compose files, ruleset definitions, and ordinary config files.
+**A pure-Gleam YAML 1.2 parser.** Parse YAML into a typed tree, or decode it
+straight into your own types with the same `gleam/dynamic/decode` decoders you
+already use for JSON.
 
-We were surprised and impressed with the deeper layers of information architecture theory addressed by the spec. We believe that depth maps to specialized domains, but urge you to review the current coverage for your case. 
+- **Pure Gleam.** No FFI, no NIFs, no C toolchain. `gleam add yamleam` is the
+  whole setup.
+- **Feels like `gleam_json`.** `yamleam.parse(source, decoder)` takes a standard
+  decoder, so decoders written for JSON work on YAML unchanged.
+- **Real-world YAML.** Block and flow collections, literal and folded block
+  scalars, anchors, aliases and merge keys, and multi-document streams.
+- **YAML 1.2 semantics.** `no`, `off` and `0777` stay exactly as written: no
+  Norway problem, no surprise octals.
+- **Explicit errors.** Invalid input returns a typed error with its line and
+  column, and features outside the supported set say so by name.
+- **Stable API.** The 1.x public surface is covered by semantic versioning.
 
-Known unsupported features are intended to fail explicitly instead of producing wrong output. 
-
----
-
-## Why yamleam?
-
-yamleam exists to provide a pure-Gleam implementation that:
-
-- **Ships as a regular hex package** with no FFI or C dependencies
-- **Returns typed `YamlNode` values** that you decode with `gleam/dynamic/decode`-style decoders
-- **Mirrors the `gleam_json` API** so existing Gleam users can adopt it with muscle memory
-- **Prioritizes correctness over feature completeness** — a small supported subset done right, not a large subset done approximately
-- **Fails loudly and helpfully** when you hit unsupported features, never silently
-
-## Coverage matrix
-
-yamleam ships with partial coverage of YAML 1.2, and is not planned to reach parity with the full substantial specification - as mentioned earlier, we do believe the covered surface will benefit a vast swath of the format's users. This matrix is the source of truth for what is and isn't supported in the current version.
-
-### Supported (v1.0.0)
-
-| Feature | Status |
-|---|---|
-| Comments (`# ...`) | ✓  |
-| Block-style mappings (`key: value`) | ✓ |
-| Block-style sequences (`- item`) | ✓ |
-| Nested structures (arbitrary depth via indentation) | ✓ |
-| Plain scalars (unquoted) | ✓ |
-| Single-quoted strings | ✓ |
-| Double-quoted strings with basic escapes (`\n`, `\t`, `\"`, `\\`, `\/`, `\r`) | ✓ |
-| Literal block scalars (`\|`, `\|-`, `\|+`) | ✓ |
-| Folded block scalars (`>`, `>-`, `>+`) | ✓ |
-| Multi-document streams (`---`, `...`) | ✓ |
-| Flow-style sequences (`[1, 2, 3]`) | ✓  |
-| Flow-style mappings (`{a: 1, b: 2}`) | ✓  |
-| Anchors and aliases (`&name`, `*name`) | ✓  |
-| Merge keys (`<<: *base`) | ✓  |
-| Null (`null`, `~`, or empty value) | ✓ |
-| Booleans (`true`, `false`) | ✓ |
-| Integers (decimal) | ✓ |
-| Floats (decimal with optional exponent) | ✓ |
-| Strings (fallback for unresolved plain scalars) | ✓ |
-| Duplicate mapping key rejection (per YAML 1.2 spec) | ✓ |
-
-### Not yet supported (returns explicit errors)
-
-| Feature | Status | Planned |
-|---|---|---|
-| Multi-line flow collections (flow that spans source lines) | ✗ parse-time error (single-line only) | planned |
-| Explicit indent indicators (`\|2`, `\|+1`) | ✗ parse-time error (auto-detect only) | planned |
-| Tags (`!!int`, `!Custom`) | ✗ `Unsupported` | planned |
-| Complex keys (map as key) | ✗ parse-time error | planned |
-| YAML 1.1 boolean variants (`yes`/`no`/`on`/`off`) | ✗ not planned |  use `true`/`false` |
-| YAML 1.1 octal (`0777`) | ✗ not planned |  use `0o777` |
-
-**Some features are "not planned":** YAML 1.1 has complexities with the "Norway problem", implicit octals, loose boolean literals and others that YAML 1.2 fixes, and we follow 1.2.
+yamleam handles the YAML that runs services and pipelines: Kubernetes manifests
+and multi-resource bundles, Helm values, CI pipelines that reuse settings
+through anchors and merge keys, docker-compose files, application config, and
+rulesets.
 
 ## Installation
 
 ```sh
-
 gleam add yamleam
-
 ```
 
-## Quick example
+## Quick start
 
 ```gleam
 import gleam/dynamic/decode
@@ -81,7 +41,8 @@ pub type Config {
 }
 
 pub fn load_config() -> Result(Config, yamleam.YamlError) {
-  let source = "
+  let source =
+    "
 name: my-service
 port: 8080
 debug: true
@@ -98,36 +59,48 @@ debug: true
 }
 ```
 
-### Working with the raw tree
+## Guide
 
-If you need the typed node tree directly without a decoder:
+### The raw tree
+
+`parse_raw` returns the typed `YamlNode` tree for direct pattern matching:
 
 ```gleam
 import yamleam
+import yamleam/node.{YamlList, YamlMap, YamlString}
 
 pub fn main() {
-  let assert Ok(tree) = yamleam.parse_raw("
+  let assert Ok(tree) =
+    yamleam.parse_raw(
+      "
 title: Example
 items:
   - alpha
   - beta
-")
-  // tree is a YamlNode.YamlMap([
-  //   #("title", YamlString("Example")),
-  //   #("items", YamlList([YamlString("alpha"), YamlString("beta")])),
-  // ])
+",
+    )
+
+  let assert YamlMap([
+    #("title", YamlString("Example")),
+    #("items", YamlList([YamlString("alpha"), YamlString("beta")])),
+  ]) = tree
 }
 ```
 
+Mappings keep their keys in source order.
+
 ### Multi-document streams
 
-Parse a stream containing several documents separated by `---`:
+`parse_documents` runs a decoder against every document in a `---`-separated
+stream, and `parse_documents_raw` returns one `YamlNode` per document:
 
 ```gleam
+import gleam/dynamic/decode
 import yamleam
 
-pub fn main() {
-  let source = "
+pub fn kinds() -> Result(List(String), yamleam.YamlError) {
+  let source =
+    "
 ---
 kind: ConfigMap
 name: app-config
@@ -138,18 +111,19 @@ name: app-svc
 kind: Deployment
 name: app-deploy
 "
-  let assert Ok(documents) = yamleam.parse_documents_raw(source)
-  // documents is List(YamlNode) — one entry per document.
+
+  yamleam.parse_documents(source, decode.at(["kind"], decode.string))
+  // -> Ok(["ConfigMap", "Service", "Deployment"])
 }
 ```
 
-`parse_documents(source, decoder)` runs a decoder against each document and returns `List(a)`.
+`parse` and `parse_raw` read exactly one document. Given a stream, they return a
+`ParseError` that points at the second document, so no document is ever dropped
+quietly.
 
-`parse_raw` and `parse` are single-document APIs. If the input contains more than one document, they return a `ParseError` instead of silently discarding the remainder of the stream.
+### Anchors, aliases and merge keys
 
-### Anchors, aliases, and merge keys
-
-The classic CI / DRY pattern:
+Define shared settings once and reuse them:
 
 ```yaml
 defaults: &defaults
@@ -167,102 +141,155 @@ job_b:
   timeout: 300       # overrides the merged value in place
 ```
 
-Parses cleanly: `job_a` ends up with all four entries from `defaults` plus its own `command`. `job_b` overrides `timeout` while keeping the other defaults. Local explicit keys always win over merged keys with the same name.
+`job_a` receives all three defaults plus its own `command`. `job_b` keeps
+`retries` and `notify`, and its own `timeout` wins. A merge key also accepts a
+list of aliases (`<<: [*base, *extra]`), and anchors are scoped to their
+document.
 
-### Handling unsupported features
+### Block scalars
 
-When yamleam encounters a feature it doesn't yet support, it returns a clear error rather than parsing incorrectly:
+Embedded scripts and long text read naturally:
+
+```yaml
+script: |
+  make build
+  make test
+summary: >
+  Folded text joins
+  into one line.
+```
+
+`script` is `"make build\nmake test\n"` and `summary` is
+`"Folded text joins into one line.\n"`. Both styles accept the strip (`|-`,
+`>-`) and keep (`|+`, `>+`) chomping indicators.
+
+### Errors
+
+Every failure is a `YamlError`:
 
 ```gleam
+import gleam/int
 import yamleam
+import yamleam/error.{DecodeError, ParseError, Unsupported}
 
-pub fn main() {
-  // Tags ('!!int', '!Custom') are not yet supported.
-  let source = "value: !!str 42"
+pub fn describe(source: String) -> String {
   case yamleam.parse_raw(source) {
-    Ok(_) -> Nil
-    Error(yamleam.Unsupported(feature: f, line: _, column: _)) -> {
-      // f = "tags ('!type') — planned for v0.6"
-      let _ = f
-      Nil
-    }
-    Error(_) -> {
-      // parse errors, etc.
-      Nil
-    }
+    Ok(_) -> "ok"
+    Error(ParseError(message:, line:, ..)) ->
+      "line " <> int.to_string(line) <> ": " <> message
+    Error(Unsupported(feature:, ..)) -> "not supported: " <> feature
+    Error(DecodeError(..)) -> "decoder rejected the document"
   }
 }
 ```
 
-## Design philosophy
+- `ParseError` covers input that isn't valid YAML, with a message, line and column.
+- `Unsupported` names a YAML feature outside the supported set, with its position.
+- `DecodeError` carries the decoder's own errors when the YAML parsed but its
+  shape didn't match.
 
-### 1. Deliberate partial coverage 
+`error.to_string` formats any of them as one line:
+`yaml parse error at line 2, column 1: duplicate mapping key 'a'`.
 
-The YAML 1.2 specification is large. Most existing YAML libraries either aim for full spec compliance (taking substantial work and containing many rare-edge-case bugs) or implement a subset without communicating it.
+## Feature reference
 
-yamleam picks **an explicit subset, intentionally documented, with clear errors**, that we believe serves a substantial map of use cases.
+| Area | Supported |
+|---|---|
+| Structure | Block mappings (`key: value`), block sequences (`- item`), nesting to any depth, comments |
+| Flow collections | `[1, 2, 3]` and `{a: 1, b: 2}` on a line, nested, inside block context |
+| Plain scalars | Null, booleans, decimal integers, decimal floats with exponents, strings |
+| Quoted strings | Single-quoted (`''` escape); double-quoted with `\n`, `\t`, `\r`, `\"`, `\\`, `\/`, `\0` |
+| Block scalars | Literal (`\|`, `\|-`, `\|+`) and folded (`>`, `>-`, `>+`), indentation auto-detected |
+| Reuse | Anchors (`&name`), aliases (`*name`), merge keys (`<<: *base`, `<<: [*a, *b]`) |
+| Streams | Multi-document streams with `---` and `...` markers |
+| Validation | Duplicate mapping keys are rejected, as YAML 1.2 requires |
 
-### 2. Decoder API mirrors `gleam_json`
+### Scalar resolution
 
-Gleam users already know how to decode dynamic JSON, and keeping this new mental model for YAML seems aligned with the language's philosophy. yamleam's `parse(source, decoder)` takes a standard `gleam/dynamic/decode` decoder, the same kind `gleam_json.parse` takes.
+Plain (unquoted) scalars resolve by the YAML 1.2 rules:
 
-### 3. Readability before performance
+| You write | You get |
+|---|---|
+| `null`, `Null`, `NULL`, `~`, or nothing | `YamlNull` |
+| `true`, `True`, `TRUE`, `false`, `False`, `FALSE` | `YamlBool` |
+| `42`, `-17`, `+3`, `0` | `YamlInt` |
+| `3.14`, `-0.5`, `1e10`, `1.0E-3` | `YamlFloat` |
+| `yes`, `no`, `on`, `off` | `YamlString` |
+| `01234`, `0777` | `YamlString`, with the leading zeros kept |
+| anything else | `YamlString` |
 
-YAML parsing is almost never the performance bottleneck in any real system. yamleam optimizes for clarity of implementation over raw speed. Once the parser is correct and covers a meaningful subset, performance work can happen as a separate effort.
+Quoted scalars are always strings, so `"123"` is `YamlString("123")`.
 
-### 4. Pure Gleam
+## Design
 
-yamleam is written entirely in Gleam — no Erlang FFI, no C NIFs, no external tools. `gleam build` is enough. The per-document anchor table is a plain `dict.Dict(String, YamlNode)` threaded explicitly through the parser as a state parameter, with the lexical scope of "fresh table at the start of each document, accumulated as anchors are encountered, never escaping the parser."
+1. **Explicit by design.** yamleam never guesses: a document parses fully, or the
+   error says what and where.
+2. **Decoders you already know.** YAML decoding mirrors `gleam_json`, so one
+   mental model covers both formats.
+3. **Pure Gleam.** Even the anchor table is a plain `Dict` threaded through the
+   parser. `gleam build` is all it takes.
+4. **YAML 1.2 semantics.** Resolution follows the modern spec, which fixed YAML
+   1.1's loose booleans and implicit octals.
+5. **Clarity first.** A readable recursive-descent parser that is easy to
+   review and extend, tested against the shapes real configs, manifests and
+   rulesets take.
 
-### 5. Tested against realistic shapes
+## Scope and limits
 
-The test suite covers the YAML shapes that appear in real-world configs, manifests, and rulesets — block mappings with embedded scripts, sequences of inline mappings, multi-document streams, anchors with merge keys in the CI/template pattern, flow collections inside block context, and so on. As yamleam matures, we'll continue adding fixtures from real production sources to catch the edge cases that synthetic tests miss.
+### Not yet supported
 
-## Untrusted input
+Each of these returns an explicit error today. Most of them are on the
+[roadmap](ROADMAP.md).
 
-yamleam is designed for parsing YAML you control or that comes from a trusted source. **It is not hardened for parsing arbitrary documents of unverified provenance.**
+| Feature | Today | Until it lands |
+|---|---|---|
+| Compact sequences (`key:` with `- item` at the key's indent, as kubectl writes) | `ParseError` | Indent the list under its key; arriving in 1.1 |
+| Double-quoted escapes beyond the set above (`\u`, `\x`, `\b`, `\f`, …) | Kept as the letter | Write the character itself; arriving in 1.1 |
+| Flow collections spanning several lines | `ParseError` | Keep `[…]` / `{…}` on one line; arriving in 1.2 |
+| Plain or single-quoted scalars spanning several lines | `ParseError` | Use `\|`, `>` or a double-quoted string |
+| Tags (`!!str`, `!Custom`) | `Unsupported` | Planned |
+| Explicit indentation indicators (`\|2`, `>+1`) | `ParseError` | Auto-detection covers the usual case |
+| Complex keys (`? [a, b]`) | `ParseError` | Planned |
+| Hex, octal and special floats (`0x1F`, `0o17`, `.inf`, `.nan`) | Resolve as strings | Planned |
 
-Specifically, the parser does not enforce limits on:
+### YAML 1.2 by design
 
-- **Document size** — `parse_raw` accepts any string and walks it eagerly. A very large document will consume memory and CPU proportional to its size.
-- **Nesting depth** — block structure is parsed by recursive descent without a depth budget. A pathologically deeply-nested document can cause stack growth or long parse times.
+YAML 1.1's `yes`/`no`/`on`/`off` booleans and `0777`-style octals are not
+coming back. They stay strings, as YAML 1.2 specifies. Tabs are not allowed in
+indentation, as the spec requires.
 
-If you need to parse YAML received from untrusted sources, enforce **input size and timeout limits at your trust boundary** before calling yamleam. Equip the process with a wall-clock timeout.
+### Parsing untrusted input
+
+yamleam parses eagerly and sets no limits of its own on document size or
+nesting depth. Aliases expand into full copies of their anchored value, so a
+small document can describe a very large tree. For YAML from outside your trust
+boundary, cap the input size before parsing and run the parse under a timeout,
+as you would for any parser of untrusted data.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the phased implementation plan and long-term coverage goals.
-
-### Released
-
-- **v0.1** ✓ block-style mappings, sequences, plain and quoted scalars, decoder layer
-- **v0.1.1** ✓ scientific-exponent crash fix, duplicate-key rejection
-- **v0.2** ✓ literal block scalars (`\|`, `\|-`, `\|+`)
-- **v0.3** ✓ folded block scalars (`>`, `>-`, `>+`) + multi-document streams (`---`, `...`)
-- **v0.5** ✓ flow-style collections (`[…]`, `{…}`) + anchors / aliases (`&`, `*`) + merge keys (`<<`)
-- **v1.0** ✓ stable API for the documented subset (`YamlNode`, `YamlError`, `parse`, `parse_raw`, `parse_documents`, `parse_documents_raw`)
-
-### Planned
-
-- **v0.6** — tags (`!!str`, `!Custom`), explicit indent indicators (`\|2`, `>+1`), multi-line flow collections
-- **v0.7** — complex keys (map-as-key), additional double-quoted escapes (`\u`, `\x`)
+[ROADMAP.md](ROADMAP.md) has what's next: compact sequences and complete
+double-quoted escapes in 1.1, multi-line flow collections and JSON documents in
+1.2, then tags and the remaining core-schema forms.
 
 ## Contributing
 
-Contributions are welcome. Priority areas:
+Contributions are welcome. These help most:
 
-- **Real-world YAML fixtures** — if you have YAML files from production systems that yamleam can't yet parse, add them to `test/fixtures/` and open an issue
-- **Error message quality** — we want error messages to tell users exactly what went wrong and where
-- **Documentation** — examples, edge cases, migration guides from yamerl
+- **Real-world YAML.** If a file from a production system doesn't parse, open an
+  issue with a minimal sample, or a PR with a failing test.
+- **Error messages.** Every error should say exactly what went wrong and where.
+- **Documentation.** Examples, edge cases, and migration notes from `yamerl`.
 
-Please open an issue before starting significant feature work so we can align on scope and ensure your effort lands in a version we're targeting.
+For significant feature work, please open an issue first so we can agree on
+scope and the release it fits.
 
 ## Development
 
 ```sh
 gleam test       # Run the test suite
 gleam build      # Compile the library
-gleam docs build # Build HTML docs
+gleam docs build # Build the HTML docs
 ```
 
 ## License

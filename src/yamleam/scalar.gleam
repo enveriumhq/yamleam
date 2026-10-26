@@ -12,11 +12,10 @@
 ////   5. Decimal float (optional sign, exponent)  →  YamlFloat
 ////   6. Otherwise                                 →  YamlString
 ////
-//// yamleam v0.1 explicitly does NOT recognize:
-////   - YAML 1.1 boolean variants ("yes", "no", "on", "off")
-////   - Hex / octal / binary integers
-////   - Infinity / NaN
-//// Use double-quoted strings if you need any of those literally.
+//// Following YAML 1.2, the YAML 1.1 boolean variants ("yes", "no", "on",
+//// "off") and leading-zero octals ("0777") resolve as strings. Hex and
+//// octal integers ("0x1F", "0o17") and the special floats (".inf",
+//// ".nan") currently resolve as strings too.
 
 import gleam/float
 import gleam/int

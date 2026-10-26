@@ -2,7 +2,7 @@ name = "yamleam"
 version = "1.0.0"
 target = "erlang"
 
-description = "A pure-Gleam YAML parser."
+description = "A pure-Gleam YAML 1.2 parser with gleam_json-style decoders."
 
 licences = ["Apache-2.0"]
 
