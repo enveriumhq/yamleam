@@ -11,24 +11,28 @@ already use for JSON.
   whole setup.
 - **Feels like `gleam_json`.** `yamleam.parse(source, decoder)` takes a standard
   decoder, so decoders written for JSON work on YAML unchanged.
-- **Real-world YAML.** Block and flow collections, literal and folded block
-  scalars, anchors, aliases and merge keys, and multi-document streams.
+- **Real-world YAML.** Block and flow collections, compact lists, literal and
+  folded block scalars, anchors, aliases and merge keys, and multi-document
+  streams.
 - **YAML 1.2 semantics.** `no`, `off` and `0777` stay exactly as written: no
   Norway problem, no surprise octals.
 - **Explicit errors.** Invalid input returns a typed error with its line and
   column, and features outside the supported set say so by name.
 - **Stable API.** The 1.x public surface is covered by semantic versioning.
 
-yamleam handles the YAML that runs services and pipelines: Kubernetes manifests
-and multi-resource bundles, Helm values, CI pipelines that reuse settings
-through anchors and merge keys, docker-compose files, application config, and
-rulesets.
+yamleam handles the YAML that runs services and pipelines: Kubernetes manifests,
+`kubectl get -o yaml` output and multi-resource bundles, Helm values, GitHub
+Actions workflows, GitLab CI pipelines that reuse settings through anchors and
+merge keys, docker-compose files, application config, and rulesets.
 
 ## Installation
 
 ```sh
 gleam add yamleam
 ```
+
+yamleam works with Gleam 1.9 or later and `gleam_stdlib` 0.60 or later, on the
+Erlang target.
 
 ## Quick start
 
@@ -88,6 +92,22 @@ items:
 ```
 
 Mappings keep their keys in source order.
+
+### Compact lists
+
+A list may sit at its key's own indent, the style kubectl and many CI tools
+write:
+
+```yaml
+spec:
+  containers:
+  - name: web
+    ports:
+    - containerPort: 8080
+```
+
+This parses to the same tree as the indented form, so either style decodes the
+same way.
 
 ### Multi-document streams
 
@@ -195,14 +215,15 @@ pub fn describe(source: String) -> String {
 
 | Area | Supported |
 |---|---|
-| Structure | Block mappings (`key: value`), block sequences (`- item`), nesting to any depth, comments |
+| Structure | Block mappings (`key: value`), block sequences (`- item`), indented or compact, nesting to any depth, comments |
 | Flow collections | `[1, 2, 3]` and `{a: 1, b: 2}` on a line, nested, inside block context |
 | Plain scalars | Null, booleans, decimal integers, decimal floats with exponents, strings |
-| Quoted strings | Single-quoted (`''` escape); double-quoted with `\n`, `\t`, `\r`, `\"`, `\\`, `\/`, `\0` |
+| Quoted strings | Single-quoted (`''` escape); double-quoted with every YAML 1.2 escape (`\n`, `\t`, `\"`, `\x41`, `\u00e9`, `\U0001F600`, …), folding across lines |
 | Block scalars | Literal (`\|`, `\|-`, `\|+`) and folded (`>`, `>-`, `>+`), indentation auto-detected |
 | Reuse | Anchors (`&name`), aliases (`*name`), merge keys (`<<: *base`, `<<: [*a, *b]`) |
 | Streams | Multi-document streams with `---` and `...` markers |
 | Validation | Duplicate mapping keys are rejected, as YAML 1.2 requires |
+| Input | UTF-8 with or without a byte order mark; LF, CRLF or CR line endings |
 
 ### Scalar resolution
 
@@ -243,8 +264,6 @@ forms, a plain string. Most of them are on the [roadmap](ROADMAP.md).
 
 | Feature | Today | Until it lands |
 |---|---|---|
-| Compact sequences (`key:` with `- item` at the key's indent, as kubectl writes) | `ParseError` | Indent the list under its key; arriving in 1.1 |
-| Double-quoted escapes beyond the set above (`\u`, `\x`, `\b`, `\f`, …) | Kept as the letter | Write the character itself; arriving in 1.1 |
 | Flow collections spanning several lines | `ParseError` | Keep `[…]` / `{…}` on one line; arriving in 1.2 |
 | Plain or single-quoted scalars spanning several lines | `ParseError` | Use `\|`, `>` or a double-quoted string |
 | Tags (`!!str`, `!Custom`) | `Unsupported` | Planned |
@@ -268,9 +287,8 @@ as you would for any parser of untrusted data.
 
 ## Roadmap
 
-[ROADMAP.md](ROADMAP.md) has what's next: compact sequences and complete
-double-quoted escapes in 1.1, multi-line flow collections and JSON documents in
-1.2, then tags and the remaining core-schema forms.
+[ROADMAP.md](ROADMAP.md) has what's next: multi-line flow collections and JSON
+documents in 1.2, then tags and the remaining core-schema forms.
 
 ## Contributing
 
@@ -291,6 +309,16 @@ gleam test       # Run the test suite
 gleam build      # Compile the library
 gleam docs build # Build the HTML docs
 ```
+
+`.tool-versions` pins the toolchain we develop on (the latest Gleam and
+Erlang/OTP), for mise or asdf.
+
+### Compatibility
+
+`gleam.toml` declares the oldest Gleam and `gleam_stdlib` versions yamleam
+supports. Each release is tested on both that minimum and the latest toolchain.
+Raising the minimum is reserved for a minor release and noted in the
+changelog; a patch release never raises it.
 
 ## License
 

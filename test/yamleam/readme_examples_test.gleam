@@ -58,9 +58,33 @@ items:
   ]) = tree
 }
 
+// ── Compact lists ───────────────────────────────────────────────────────────
+
+pub fn compact_lists_test() {
+  let compact =
+    "
+spec:
+  containers:
+  - name: web
+    ports:
+    - containerPort: 8080
+"
+  let indented =
+    "
+spec:
+  containers:
+    - name: web
+      ports:
+        - containerPort: 8080
+"
+  let assert Ok(tree) = yamleam.parse_raw(compact)
+  yamleam.parse_raw(indented) |> should.equal(Ok(tree))
+}
+
 // ── Multi-document streams ──────────────────────────────────────────────────
 
-const stream = "
+const stream =
+  "
 ---
 kind: ConfigMap
 name: app-config
@@ -180,7 +204,7 @@ pub fn describe_errors_test() {
   describe("a: 1") |> should.equal("ok")
   describe("a: 1\na: 2") |> should.equal("line 2: duplicate mapping key 'a'")
   describe("value: !!str 42")
-  |> should.equal("not supported: tags ('!type') — planned for v0.6")
+  |> should.equal("not supported: tags ('!type')")
 }
 
 pub fn error_to_string_test() {

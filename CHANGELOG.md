@@ -6,8 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.1.0] — compact sequences, complete escapes
+
+### Added
+
+- Compact block sequences. A sequence that is a mapping value may put its dashes at the key's own column (`steps:` followed by `- run: make`), the style kubectl, GitHub Actions and Ansible tooling emit (YAML 1.2 §8.2.1). This works at every nesting level, inside `- key:` sequence items, and after an anchor.
+- The full YAML 1.2 double-quoted escape set: `\a`, `\b`, `\e`, `\f`, `\v`, `\N`, `\_`, `\L`, `\P`, escaped space and tab, `\xXX`, `\uXXXX` and `\UXXXXXXXX`, alongside the existing `\0`, `\t`, `\n`, `\r`, `\"`, `\/` and `\\`.
+
+### Fixed
+
+- An unknown escape in a double-quoted string (`"\q"`), a short hex escape, or an escape naming a surrogate now returns a `ParseError` at the backslash. Previously the backslash was dropped and the letter kept, so `"caf\u00e9"` read as `cafu00e9`.
+- Double-quoted strings that span lines now fold as YAML 1.2 specifies. Trailing white space before a break is dropped, each empty line becomes a newline, and a `\` at the end of a line joins the lines with no space.
+- CRLF and CR line endings read the same as LF. Before this, a file saved with Windows line endings failed as soon as a key had a nested value. Block scalar and folded string content uses `\n`, as YAML 1.2 specifies.
+- A leading UTF-8 byte order mark is dropped. Previously it became part of the first key.
+
 ### Changed
 
+- The `Unsupported` feature text for tags is now `tags ('!type')`, without a release reference.
+- `gleam.toml` now declares the real minimums: Gleam `>= 1.9.0` and `gleam_stdlib >= 0.60.0`. The decoder layer has used `gleam_stdlib` 0.60 APIs since 1.0, so the old `>= 0.46.0` bound could resolve to versions that don't compile. With the corrected bounds, the resolver reports the mismatch instead.
+- Development uses Gleam 1.19.2 and Erlang/OTP 29.1.2, pinned in `.tool-versions`.
 - Rewrote the README, ROADMAP and module documentation. The README now covers usage, a grouped feature reference and a scalar resolution table, and its examples are compiled and run by the test suite.
 
 ## [1.0.0] — stable API

@@ -33,7 +33,7 @@ YAML that services and pipelines run on:
 - duplicate-key rejection;
 - YAML 1.2 scalar resolution.
 
-## 1.1: compact sequences and complete escapes
+## 1.1: compact sequences and complete escapes (shipped)
 
 - **Compact sequences:** a block sequence at its key's own indent (`steps:`
   followed by `- run: make`), the style kubectl, GitHub Actions, Ansible and
