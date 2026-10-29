@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.3.0] — JavaScript target, decode error detail
+
 ### Added
 
 - The JavaScript target is supported and tested. yamleam has always been pure Gleam; the full test suite now runs on both targets, with no npm dependency.
