@@ -11,6 +11,8 @@
 
 import gleam/dynamic/decode
 import gleam/int
+import gleam/list
+import gleam/string
 
 pub type YamlError {
   ParseError(message: String, line: Int, column: Int)
@@ -37,6 +39,25 @@ pub fn to_string(err: YamlError) -> String {
       <> int.to_string(column)
       <> ": "
       <> feature
-    DecodeError(_) -> "yaml decode error: could not extract requested shape"
+    DecodeError(errors) -> "yaml decode error" <> describe_decode_errors(errors)
+  }
+}
+
+/// Describe the first decoder error with its path, and count the rest:
+/// ` at spec.port: expected Int, found String (and 1 more)`.
+fn describe_decode_errors(errors: List(decode.DecodeError)) -> String {
+  case errors {
+    [] -> ": could not extract requested shape"
+    [first, ..rest] -> {
+      let at = case first.path {
+        [] -> ""
+        path -> " at " <> string.join(path, ".")
+      }
+      let more = case list.length(rest) {
+        0 -> ""
+        n -> " (and " <> int.to_string(n) <> " more)"
+      }
+      at <> ": expected " <> first.expected <> ", found " <> first.found <> more
+    }
   }
 }

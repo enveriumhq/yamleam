@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- The JavaScript target is supported and tested. yamleam has always been pure Gleam; the full test suite now runs on both targets, with no npm dependency.
+
+### Fixed
+
+- On JavaScript, a float literal that overflows (`2.5E500`) resolves to a string, as it does on Erlang, instead of to `Infinity`.
+
+### Changed
+
+- `error.to_string` describes a `DecodeError` by the decoder's own report: the path, the expected and the found type of the first error, and how many more there are (`yaml decode error at spec.port: expected Int, found String`). It used to print only "could not extract requested shape".
+
 ## [1.2.0] — multi-line flow collections, JSON documents
 
 ### Added

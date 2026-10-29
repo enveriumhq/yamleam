@@ -110,9 +110,21 @@ fn leading_zero(text: String) -> Bool {
 /// scientific notation manually.
 fn try_float(text: String) -> Result(Float, Nil) {
   case float.parse(text) {
-    Ok(f) -> Ok(f)
+    Ok(f) ->
+      case is_finite(f) {
+        True -> Ok(f)
+        False -> Error(Nil)
+      }
     Error(_) -> try_float_with_exponent(text)
   }
+}
+
+// Erlang's `float.parse` rejects an overflowing literal like `2.5E500`, but
+// JavaScript's returns Infinity. Rejecting non-finite results here makes it
+// resolve to a string on both targets. Infinity minus itself is NaN, which
+// never equals 0.0.
+fn is_finite(f: Float) -> Bool {
+  f -. f == 0.0
 }
 
 fn try_float_with_exponent(text: String) -> Result(Float, Nil) {

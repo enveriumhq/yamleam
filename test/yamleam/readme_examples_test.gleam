@@ -255,6 +255,29 @@ pub fn error_to_string_test() {
   )
 }
 
+pub fn decode_error_to_string_names_path_test() {
+  let assert Error(err) =
+    yamleam.parse(
+      "spec:\n  port: http\n",
+      decode.at(["spec", "port"], decode.int),
+    )
+  error.to_string(err)
+  |> should.equal("yaml decode error at spec.port: expected Int, found String")
+}
+
+pub fn decode_error_to_string_counts_the_rest_test() {
+  let decoder = {
+    use name <- decode.field("name", decode.string)
+    use port <- decode.field("port", decode.int)
+    decode.success(#(name, port))
+  }
+  let assert Error(err) = yamleam.parse("name: 7\nport: x\n", decoder)
+  error.to_string(err)
+  |> should.equal(
+    "yaml decode error at name: expected String, found Int (and 1 more)",
+  )
+}
+
 // ── Scalar resolution ───────────────────────────────────────────────────────
 
 fn resolve(text: String) -> yamleam.YamlNode {
