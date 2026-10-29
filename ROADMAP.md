@@ -51,11 +51,14 @@ YAML that services and pipelines run on:
 
 ## Later in 1.x
 
+- **Multi-line plain and single-quoted scalars (next).** Hand-written YAML,
+  such as OpenAPI descriptions, wraps long plain values across lines without
+  doing anything unusual, so this is the gap most likely to stop a document
+  someone else wrote.
 - **Core-schema tags:** `!!str`, `!!int`, `!!float`, `!!bool`, `!!null`,
   `!!seq`, `!!map`.
 - **Core-schema integers:** hex (`0x1F`) and octal (`0o17`).
 - **Explicit indentation indicators:** `|2`, `>+1`.
-- **Multi-line plain and single-quoted scalars.**
 - **Complex keys:** `? [a, b]`.
 
 Each of these is additive and fits inside the stable 1.x API.

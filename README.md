@@ -32,7 +32,11 @@ gleam add yamleam
 ```
 
 yamleam works with Gleam 1.9 or later and `gleam_stdlib` 0.60 or later, on the
-Erlang target.
+Erlang and JavaScript targets.
+
+On JavaScript, numbers follow JavaScript's rules, as they do for `gleam_json`.
+Integers beyond 2^53 lose precision, and an integral float such as `8080.0`
+satisfies `decode.int`.
 
 ## Quick start
 
@@ -240,7 +244,8 @@ pub fn describe(source: String) -> String {
   shape didn't match.
 
 `error.to_string` formats any of them as one line:
-`yaml parse error at line 2, column 1: duplicate mapping key 'a'`.
+`yaml parse error at line 2, column 1: duplicate mapping key 'a'`, or, for a
+decoder's rejection, `yaml decode error at spec.port: expected Int, found String`.
 
 ## Feature reference
 
@@ -318,8 +323,9 @@ as you would for any parser of untrusted data.
 
 ## Roadmap
 
-[ROADMAP.md](ROADMAP.md) has what's next: core-schema tags and integers,
-explicit indentation indicators, multi-line plain scalars, and complex keys.
+[ROADMAP.md](ROADMAP.md) has what's next: multi-line plain scalars first, then
+core-schema tags and integers, explicit indentation indicators, and complex
+keys.
 
 ## Contributing
 
@@ -347,7 +353,8 @@ Erlang/OTP), for mise or asdf.
 ### Compatibility
 
 `gleam.toml` declares the oldest Gleam and `gleam_stdlib` versions yamleam
-supports. Each release is tested on both that minimum and the latest toolchain.
+supports. Each release is tested on both that minimum and the latest toolchain,
+on both targets (`gleam test --target javascript` runs the JavaScript suite).
 Raising the minimum is reserved for a minor release and noted in the
 changelog; a patch release never raises it.
 
