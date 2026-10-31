@@ -12,8 +12,8 @@ already use for JSON.
 - **Feels like `gleam_json`.** `yamleam.parse(source, decoder)` takes a standard
   decoder, so decoders written for JSON work on YAML unchanged.
 - **Real-world YAML, and JSON too.** Block and flow collections, compact
-  lists, literal and folded block scalars, anchors, aliases and merge keys,
-  multi-document streams, and JSON documents.
+  lists, literal and folded block scalars, values that wrap across lines,
+  anchors, aliases and merge keys, multi-document streams, and JSON documents.
 - **YAML 1.2 semantics.** `no`, `off` and `0777` stay exactly as written: no
   Norway problem, no surprise octals.
 - **Explicit errors.** Invalid input returns a typed error with its line and
@@ -218,6 +218,27 @@ summary: >
 `"Folded text joins into one line.\n"`. Both styles accept the strip (`|-`,
 `>-`) and keep (`|+`, `>+`) chomping indicators.
 
+### Wrapped values
+
+Hand-written YAML often wraps a long value onto the lines below it, quoted or
+not:
+
+```yaml
+description: Returns the pets the caller may see,
+  most recent first.
+
+  Archived pets are left out.
+note: 'Single-quoted text
+  folds the same way.'
+```
+
+The lines join with a space, and an empty line between them becomes a line
+break: `description` is
+`"Returns the pets the caller may see, most recent first.\nArchived pets are left out."`.
+A continuation line must be indented more than its key, and a comment ends
+the value. Keys stay on one line: a `:` after a wrapped value is a
+`ParseError`.
+
 ### Errors
 
 Every failure is a `YamlError`:
@@ -254,8 +275,8 @@ decoder's rejection, `yaml decode error at spec.port: expected Int, found String
 | Structure | Block mappings (`key: value`), block sequences (`- item`), indented or compact, nesting to any depth, comments |
 | Flow collections | `[1, 2, 3]` and `{a: 1, b: 2}`, on one line or across several, nested, inside block context |
 | JSON | Pretty-printed and compact documents (`{"a":1}`), `\uXXXX` escapes and surrogate pairs |
-| Plain scalars | Null, booleans, decimal integers, decimal floats with exponents, strings |
-| Quoted strings | Single-quoted (`''` escape); double-quoted with every YAML 1.2 escape (`\n`, `\t`, `\"`, `\x41`, `\u00e9`, `\U0001F600`, …), folding across lines |
+| Plain scalars | Null, booleans, decimal integers, decimal floats with exponents, strings; text wrapped across lines |
+| Quoted strings | Single-quoted (`''` escape); double-quoted with every YAML 1.2 escape (`\n`, `\t`, `\"`, `\x41`, `\u00e9`, `\U0001F600`, …); both fold across lines |
 | Block scalars | Literal (`\|`, `\|-`, `\|+`) and folded (`>`, `>-`, `>+`), indentation auto-detected |
 | Reuse | Anchors (`&name`), aliases (`*name`), merge keys (`<<: *base`, `<<: [*a, *b]`) |
 | Streams | Multi-document streams with `---` and `...` markers |
@@ -301,7 +322,6 @@ forms, a plain string. Most of them are on the [roadmap](ROADMAP.md).
 
 | Feature | Today | Until it lands |
 |---|---|---|
-| Plain or single-quoted scalars spanning several lines | `ParseError` | Use `\|`, `>` or a double-quoted string |
 | Tags (`!!str`, `!Custom`) | `Unsupported` | Planned |
 | Explicit indentation indicators (`\|2`, `>+1`) | `ParseError` | Auto-detection covers the usual case |
 | Complex keys (`? [a, b]`) | `ParseError` | Planned |
@@ -323,9 +343,8 @@ as you would for any parser of untrusted data.
 
 ## Roadmap
 
-[ROADMAP.md](ROADMAP.md) has what's next: multi-line plain scalars first, then
-core-schema tags and integers, explicit indentation indicators, and complex
-keys.
+[ROADMAP.md](ROADMAP.md) has what's next: core-schema tags and integers,
+explicit indentation indicators, and complex keys.
 
 ## Contributing
 

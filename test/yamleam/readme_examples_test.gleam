@@ -228,6 +228,34 @@ summary: >
   )
 }
 
+// ── Wrapped values ──────────────────────────────────────────────────────────
+
+pub fn wrapped_values_test() {
+  let source =
+    "
+description: Returns the pets the caller may see,
+  most recent first.
+
+  Archived pets are left out.
+note: 'Single-quoted text
+  folds the same way.'
+"
+  yamleam.parse_raw(source)
+  |> should.equal(
+    Ok(
+      YamlMap([
+        #(
+          "description",
+          YamlString(
+            "Returns the pets the caller may see, most recent first.\nArchived pets are left out.",
+          ),
+        ),
+        #("note", YamlString("Single-quoted text folds the same way.")),
+      ]),
+    ),
+  )
+}
+
 // ── Errors ──────────────────────────────────────────────────────────────────
 
 fn describe(source: String) -> String {
