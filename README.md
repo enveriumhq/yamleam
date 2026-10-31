@@ -365,3 +365,8 @@ Apache-2.0.
 ## Acknowledgements
 
 Thanks to the maintainers of Gleam, `yamerl`, `yaml-rust`, and `ocaml-yaml`.
+
+## About
+
+yamleam is built and maintained by [Enverium](https://enverium.com), a
+sustainability reporting platform.
