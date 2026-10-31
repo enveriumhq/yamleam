@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.4.0] — wrapped values
+
+### Added
+
+- Plain scalars may continue on the lines below them, as hand-written YAML such as OpenAPI descriptions does (YAML 1.2 §7.3.3). The lines join with a space, and each empty line between them becomes a newline. In block context a continuation line must be indented more than the value's key, or its dash for a sequence item, so a sibling key never reads as part of the value. A comment or a document marker ends the value.
+- Single-quoted strings may span lines, folding as double-quoted strings do.
+- A `:` after a plain scalar that spans lines is a `ParseError` at the `:`, because a mapping key must fit on one line (`a` then `b: c` on the next line used to be rejected with a vaguer error).
+- The README and the package page link to [Enverium](https://enverium.com), which builds and maintains yamleam.
+
+### Fixed
+
+- A plain scalar that wraps inside a flow collection is one value, as YAML 1.2 specifies. `[a` followed by `b]` on the next line used to read as two items, `["a", "b"]`; it now reads as `["a b"]`.
+
 ## [1.3.0] — JavaScript target, decode error detail
 
 ### Added

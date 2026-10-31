@@ -9,7 +9,10 @@
 ////   sees an opener at end-of-line position, it reads continuation lines
 ////   until indent returns to the parent level, then emits a
 ////   `QuotedScalar` token with folding and chomping applied.
-//// - **Double-quoted strings** that continue onto following lines.
+//// - **Quoted strings**, single or double, that continue onto following
+////   lines.
+//// - **Plain scalars** that continue onto more-indented lines, folded
+////   into one value.
 ////
 //// Flow indicators (`[`, `]`, `{`, `}`, `,`) are tracked with a flow
 //// depth so they only act as terminators inside flow context. Tabs in
@@ -18,6 +21,7 @@
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/result
 import gleam/string
 import yamleam/error.{type YamlError, ParseError, Unsupported}
 import yamleam/position.{type Position, Position}
@@ -295,15 +299,30 @@ fn tokenize_content_ml(
 
     // Single-quoted string
     ["'", ..rest] ->
-      case read_single_quoted(rest, line_num, col + 1, []) {
+      case
+        read_single_quoted(
+          rest,
+          line_num,
+          col + 1,
+          [],
+          [],
+          rest_raw,
+          extra_consumed,
+        )
+      {
         Error(e) -> Error(e)
-        Ok(#(text, remaining, new_col)) -> {
+        Ok(#(text, remaining, new_col, new_rest_raw, new_extra)) -> {
           let tok =
             Token(kind: QuotedScalar(text), position: Position(line_num, col))
-          tokenize_content_ml(remaining, line_num, new_col, flow_depth, [
-            tok,
-            ..acc
-          ], rest_raw, extra_consumed)
+          tokenize_content_ml(
+            remaining,
+            line_num,
+            new_col,
+            flow_depth,
+            [tok, ..acc],
+            new_rest_raw,
+            new_extra,
+          )
         }
       }
 
@@ -508,12 +527,164 @@ fn read_plain_then_continue_ml(
 ) -> Result(#(List(Token), Option(PendingBlock), List(String), Int), YamlError) {
   let #(text, remaining, new_col) =
     read_plain_scalar(graphemes, col, flow_depth, [])
-  case text {
-    "" -> Ok(#(list.reverse(acc), None, rest_raw, extra_consumed))
-    _ -> {
+  case text, remaining {
+    "", _ -> Ok(#(list.reverse(acc), None, rest_raw, extra_consumed))
+    // The scalar reached the end of its line, so it may continue on the
+    // lines that follow.
+    _, [] -> {
+      let parent_indent = plain_parent_indent(acc, col)
+      use continued <- result.try(continue_plain(
+        text,
+        line_num,
+        new_col,
+        parent_indent,
+        flow_depth,
+        rest_raw,
+        extra_consumed,
+      ))
+      let tok =
+        Token(
+          kind: PlainScalar(continued.text),
+          position: Position(line_num, col),
+        )
+      tokenize_content_ml(
+        continued.remaining,
+        continued.line,
+        continued.column,
+        flow_depth,
+        [tok, ..acc],
+        continued.rest_raw,
+        continued.extra_consumed,
+      )
+    }
+    _, _ -> {
       let tok =
         Token(kind: PlainScalar(text), position: Position(line_num, col))
-      tokenize_content_ml(remaining, line_num, new_col, flow_depth, [tok, ..acc], rest_raw, extra_consumed)
+      tokenize_content_ml(
+        remaining,
+        line_num,
+        new_col,
+        flow_depth,
+        [tok, ..acc],
+        rest_raw,
+        extra_consumed,
+      )
+    }
+  }
+}
+
+/// Where a plain scalar's continuation stopped: the folded text, and the
+/// rest of the last line it read, which tokenizing resumes from.
+type PlainContinuation {
+  PlainContinuation(
+    text: String,
+    remaining: List(String),
+    line: Int,
+    column: Int,
+    rest_raw: List(String),
+    extra_consumed: Int,
+  )
+}
+
+/// The indentation of the block node that holds a plain scalar starting
+/// at `col`, given the tokens before it on its line (most recent first).
+/// In block context a continuation line must be indented more than this
+/// (YAML 1.2 §7.3.3), so a sibling key or sequence item never reads as
+/// part of the scalar.
+///
+/// - A mapping value (`key: text`, `- key: text`): the key's indentation.
+/// - A sequence item (`- text`): the dash's indentation.
+/// - A scalar alone on its line: one less than its own indentation, so
+///   continuation lines may align with its first line.
+fn plain_parent_indent(acc: List(Token), col: Int) -> Int {
+  let since_dash = list.take_while(acc, fn(tok) { tok.kind != Dash })
+  let first_column = case list.last(since_dash) {
+    Ok(tok) -> tok.position.column
+    Error(Nil) -> col
+  }
+  let has_colon = list.any(since_dash, fn(tok) { tok.kind == Colon })
+  case has_colon, list.drop(acc, list.length(since_dash)) {
+    True, _ -> first_column - 1
+    False, [dash, ..] -> dash.position.column - 1
+    False, [] -> first_column - 2
+  }
+}
+
+/// Fold the lines that continue a plain scalar (YAML 1.2 §7.3.3). A line
+/// break between two content lines becomes a space, and each empty line
+/// between them becomes a `\n`. A continuation line must be indented more
+/// than `parent_indent` in block context, and it may not be a comment or a
+/// document marker; inside a flow collection, any line that starts with
+/// plain content continues the scalar. Blank lines that lead to no
+/// continuation are left unread. A `:` after a continued scalar is an
+/// error, because a mapping key must fit on one line.
+fn continue_plain(
+  text: String,
+  line_num: Int,
+  col: Int,
+  parent_indent: Int,
+  flow_depth: Int,
+  rest_raw: List(String),
+  extra_consumed: Int,
+) -> Result(PlainContinuation, YamlError) {
+  let stop =
+    Ok(PlainContinuation(text, [], line_num, col, rest_raw, extra_consumed))
+  let blank = list.take_while(rest_raw, fn(raw) { string.trim(raw) == "" })
+  let blank_count = list.length(blank)
+  case list.drop(rest_raw, blank_count) {
+    [] -> stop
+    [next, ..rest_rest] -> {
+      let next_num = line_num + blank_count + 1
+      case validate_indent(string.to_graphemes(next), next_num) {
+        Error(_) -> stop
+        Ok(#(indent, content)) -> {
+          let continues =
+            { flow_depth > 0 || indent > parent_indent }
+            && !{
+              indent == 0 && try_document_marker(content, next_num) != None
+            }
+          let #(more, remaining, new_col) =
+            read_plain_scalar(content, indent + 1, flow_depth, [])
+          case continues, more, content {
+            False, _, _ | _, "", _ | _, _, ["#", ..] -> stop
+            True, _, _ -> {
+              let separator = case blank_count {
+                0 -> " "
+                _ -> string.repeat("\n", blank_count)
+              }
+              let joined = text <> separator <> more
+              let consumed = extra_consumed + blank_count + 1
+              case remaining {
+                [] ->
+                  continue_plain(
+                    joined,
+                    next_num,
+                    new_col,
+                    parent_indent,
+                    flow_depth,
+                    rest_rest,
+                    consumed,
+                  )
+                [":", ..] ->
+                  Error(ParseError(
+                    message: "unexpected ':' after a plain scalar that spans lines; a mapping key must fit on one line",
+                    line: next_num,
+                    column: new_col,
+                  ))
+                _ ->
+                  Ok(PlainContinuation(
+                    joined,
+                    remaining,
+                    next_num,
+                    new_col,
+                    rest_rest,
+                    consumed,
+                  ))
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -614,26 +785,107 @@ fn is_separator_followup(rest: List(String)) -> Bool {
 
 // ── Quoted scalar readers ───────────────────────────────────────────────────
 
+/// Single-quoted string reader. `''` is an escaped quote, and a string
+/// that continues past its line folds the break as a double-quoted string
+/// does (YAML 1.2 §7.3.2): a space, or one `\n` per empty line between.
+/// `white` holds the spaces and tabs since the last content character,
+/// most recent first, which a line break drops.
 fn read_single_quoted(
   remaining: List(String),
   line_num: Int,
   col: Int,
   acc: List(String),
-) -> Result(#(String, List(String), Int), YamlError) {
+  white: List(String),
+  rest_raw: List(String),
+  extra_consumed: Int,
+) -> Result(#(String, List(String), Int, List(String), Int), YamlError) {
   case remaining {
+    [] -> fold_single_quoted(line_num, col, acc, 0, rest_raw, extra_consumed)
+    ["'", "'", ..rest] ->
+      read_single_quoted(
+        rest,
+        line_num,
+        col + 2,
+        ["'", ..list.append(white, acc)],
+        [],
+        rest_raw,
+        extra_consumed,
+      )
+    ["'", ..rest] -> {
+      let text = list.append(white, acc) |> list.reverse |> string.join("")
+      Ok(#(text, rest, col + 1, rest_raw, extra_consumed))
+    }
+    [" " as c, ..rest] | ["\t" as c, ..rest] ->
+      read_single_quoted(
+        rest,
+        line_num,
+        col + 1,
+        acc,
+        [c, ..white],
+        rest_raw,
+        extra_consumed,
+      )
+    [c, ..rest] ->
+      read_single_quoted(
+        rest,
+        line_num,
+        col + 1,
+        [c, ..list.append(white, acc)],
+        [],
+        rest_raw,
+        extra_consumed,
+      )
+  }
+}
+
+/// Continue a single-quoted string on the next non-empty line, counting
+/// the empty lines on the way. The error for a string that never closes
+/// points at the end of the line where it was last open.
+fn fold_single_quoted(
+  line_num: Int,
+  col: Int,
+  acc: List(String),
+  empty_lines: Int,
+  rest_raw: List(String),
+  extra_consumed: Int,
+) -> Result(#(String, List(String), Int, List(String), Int), YamlError) {
+  case rest_raw {
     [] ->
       Error(ParseError(
         message: "unterminated single-quoted string",
-        line: line_num,
+        line: line_num - empty_lines,
         column: col,
       ))
-    ["'", "'", ..rest] ->
-      read_single_quoted(rest, line_num, col + 2, ["'", ..acc])
-    ["'", ..rest] -> {
-      let text = acc |> list.reverse |> string.join("")
-      Ok(#(text, rest, col + 1))
+    [next_line, ..rest_rest] -> {
+      let trimmed = string.trim_start(next_line)
+      case trimmed {
+        "" ->
+          fold_single_quoted(
+            line_num + 1,
+            col,
+            acc,
+            empty_lines + 1,
+            rest_rest,
+            extra_consumed + 1,
+          )
+        _ -> {
+          let separator = case empty_lines {
+            0 -> " "
+            _ -> string.repeat("\n", empty_lines)
+          }
+          let indent_len = string.length(next_line) - string.length(trimmed)
+          read_single_quoted(
+            string.to_graphemes(trimmed),
+            line_num + 1,
+            indent_len + 1,
+            [separator, ..acc],
+            [],
+            rest_rest,
+            extra_consumed + 1,
+          )
+        }
+      }
     }
-    [c, ..rest] -> read_single_quoted(rest, line_num, col + 1, [c, ..acc])
   }
 }
 

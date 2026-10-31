@@ -49,13 +49,20 @@ YAML that services and pipelines run on:
 - **JSON documents:** pretty-printed and compact JSON parse as YAML, including
   `"key":value` with no space after the colon.
 
+## 1.3: JavaScript target (shipped)
+
+- **JavaScript:** the full test suite runs on both targets, with no npm
+  dependency.
+
+## 1.4: wrapped values (shipped)
+
+- **Multi-line plain and single-quoted scalars:** hand-written YAML, such as
+  OpenAPI descriptions, wraps long values across lines. They fold as YAML 1.2
+  specifies, and a key that would span lines is an explicit error.
+
 ## Later in 1.x
 
-- **Multi-line plain and single-quoted scalars (next).** Hand-written YAML,
-  such as OpenAPI descriptions, wraps long plain values across lines without
-  doing anything unusual, so this is the gap most likely to stop a document
-  someone else wrote.
-- **Core-schema tags:** `!!str`, `!!int`, `!!float`, `!!bool`, `!!null`,
+- **Core-schema tags (next):** `!!str`, `!!int`, `!!float`, `!!bool`, `!!null`,
   `!!seq`, `!!map`.
 - **Core-schema integers:** hex (`0x1F`) and octal (`0o17`).
 - **Explicit indentation indicators:** `|2`, `>+1`.
