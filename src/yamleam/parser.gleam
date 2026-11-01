@@ -673,14 +673,25 @@ fn parse_flow_seq(
               // YAML 1.2 allows `[key: value, ...]` as shorthand for `[{key: value}, ...]`
               case after {
                 [colon_tok, ..after_colon] if colon_tok.kind == Colon -> {
-                  case scalar_flow_key_to_string(value, colon_tok.position.line, colon_tok.position.column) {
+                  case
+                    scalar_flow_key_to_string(
+                      value,
+                      colon_tok.position.line,
+                      colon_tok.position.column,
+                    )
+                  {
                     Error(e) -> Error(e)
                     Ok(key_str) ->
                       case parse_flow_value(after_colon, line_num, anchors2) {
                         Error(e) -> Error(e)
                         Ok(#(map_value, after_value, anchors3)) -> {
                           let map_node = ExactMap([#(key_str, map_value)])
-                          parse_flow_seq(after_value, line_num, [map_node, ..acc], anchors3)
+                          parse_flow_seq(
+                            after_value,
+                            line_num,
+                            [map_node, ..acc],
+                            anchors3,
+                          )
                         }
                       }
                   }

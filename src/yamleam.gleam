@@ -74,7 +74,10 @@ pub fn parse_raw(source: String) -> Result(YamlNode, YamlError) {
 /// type used by `gleam_json.parse`. Decoders written for JSON sources
 /// can be reused unchanged against YAML sources. Reads exactly one
 /// document; use `parse_documents` for multi-document streams.
-pub fn parse(source: String, decoder: decode.Decoder(a)) -> Result(a, YamlError) {
+pub fn parse(
+  source: String,
+  decoder: decode.Decoder(a),
+) -> Result(a, YamlError) {
   case parse_raw(source) {
     Error(e) -> Error(e)
     Ok(tree) -> {
@@ -97,7 +100,9 @@ pub fn parse(source: String, decoder: decode.Decoder(a)) -> Result(a, YamlError)
 /// An empty stream returns `[]`.
 ///
 /// Use `parse_documents` if you want each document run through a decoder.
-pub fn parse_documents_raw(source: String) -> Result(List(YamlNode), YamlError) {
+pub fn parse_documents_raw(
+  source: String,
+) -> Result(List(YamlNode), YamlError) {
   case exact.parse_documents(source) {
     Error(e) -> Error(e)
     Ok(trees) -> Ok(list.map(trees, exact.to_yaml_node))

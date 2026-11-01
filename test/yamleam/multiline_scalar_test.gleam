@@ -5,7 +5,8 @@ import yamleam
 import yamleam/error.{ParseError}
 import yamleam/node.{YamlInt, YamlList, YamlMap, YamlString}
 
-const key_error = "unexpected ':' after a plain scalar that spans lines; a mapping key must fit on one line"
+const key_error =
+  "unexpected ':' after a plain scalar that spans lines; a mapping key must fit on one line"
 
 pub fn plain_value_folds_into_one_line_test() {
   let assert Ok(YamlMap([
@@ -48,7 +49,10 @@ pub fn value_on_the_line_after_its_key_test() {
 }
 
 pub fn sequence_item_continues_test() {
-  let assert Ok(YamlList([YamlString("install the - dependencies"), YamlString("test")])) =
+  let assert Ok(YamlList([
+    YamlString("install the - dependencies"),
+    YamlString("test"),
+  ])) =
     yamleam.parse_raw(
       "- install the
   - dependencies
@@ -58,7 +62,10 @@ pub fn sequence_item_continues_test() {
 
 pub fn value_in_a_sequence_item_mapping_test() {
   let assert Ok(YamlList([
-    YamlMap([#("name", YamlString("build the image")), #("run", YamlString("make"))]),
+    YamlMap([
+      #("name", YamlString("build the image")),
+      #("run", YamlString("make")),
+    ]),
   ])) =
     yamleam.parse_raw(
       "- name: build
@@ -125,8 +132,10 @@ pub fn lines_after_a_continued_scalar_keep_their_numbers_test() {
 }
 
 pub fn single_quoted_folds_test() {
-  let assert Ok(YamlMap([#("msg", YamlString("it's a\nlong one")), #("next", YamlInt(1))])) =
-    yamleam.parse_raw("msg: 'it''s a   \n\n    long one'\nnext: 1")
+  let assert Ok(YamlMap([
+    #("msg", YamlString("it's a\nlong one")),
+    #("next", YamlInt(1)),
+  ])) = yamleam.parse_raw("msg: 'it''s a   \n\n    long one'\nnext: 1")
 }
 
 pub fn single_quoted_spaces_inside_a_line_are_kept_test() {
