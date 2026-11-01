@@ -21,14 +21,13 @@
 //// encountered; alias lookups (`*name`) read from the table at the
 //// site of use. Nothing escapes the parser.
 
-import gleam/float
 import gleam/int
 import gleam/list
 import yamleam/anchors.{type Anchors} as anchor_table
 import yamleam/error.{type YamlError, ParseError}
 import yamleam/node.{
   type ExactNode, ExactBool, ExactList, ExactMap, ExactNull, ExactNumber,
-  ExactString, YamlFloat, YamlInt,
+  ExactString,
 }
 import yamleam/position.{type Position}
 import yamleam/scalar
@@ -666,40 +665,66 @@ fn parse_flow_seq(
         // Consecutive commas or leading comma — skip (permissive)
         Comma -> parse_flow_seq(rest, line_num, acc, anchors)
         _ ->
-          case parse_flow_value(tokens, line_num, anchors) {
-            Error(e) -> Error(e)
-            Ok(#(value, after, anchors2)) ->
-              // Check for implicit mapping: `key: value` inside flow sequence
-              // YAML 1.2 allows `[key: value, ...]` as shorthand for `[{key: value}, ...]`
-              case after {
-                [colon_tok, ..after_colon] if colon_tok.kind == Colon -> {
-                  case
-                    scalar_flow_key_to_string(
-                      value,
-                      colon_tok.position.line,
-                      colon_tok.position.column,
-                    )
-                  {
-                    Error(e) -> Error(e)
-                    Ok(key_str) ->
-                      case parse_flow_value(after_colon, line_num, anchors2) {
+          // Implicit mapping: YAML 1.2 allows `[key: value, ...]` as
+          // shorthand for `[{key: value}, ...]`. A scalar key keeps its
+          // text as written, as it does in block and flow mappings.
+          case tokens {
+            [Token(kind: PlainScalar(key), ..), Token(kind: Colon, ..), ..after]
+            | [
+                Token(kind: QuotedScalar(key), ..),
+                Token(kind: Colon, ..),
+                ..after
+              ] -> parse_flow_pair(key, after, line_num, acc, anchors)
+            _ ->
+              case parse_flow_value(tokens, line_num, anchors) {
+                Error(e) -> Error(e)
+                Ok(#(value, after, anchors2)) ->
+                  case after {
+                    [colon_tok, ..after_colon] if colon_tok.kind == Colon ->
+                      case
+                        scalar_flow_key_to_string(
+                          value,
+                          colon_tok.position.line,
+                          colon_tok.position.column,
+                        )
+                      {
                         Error(e) -> Error(e)
-                        Ok(#(map_value, after_value, anchors3)) -> {
-                          let map_node = ExactMap([#(key_str, map_value)])
-                          parse_flow_seq(
-                            after_value,
+                        Ok(key) ->
+                          parse_flow_pair(
+                            key,
+                            after_colon,
                             line_num,
-                            [map_node, ..acc],
-                            anchors3,
+                            acc,
+                            anchors2,
                           )
-                        }
                       }
+                    _ ->
+                      parse_flow_seq(after, line_num, [value, ..acc], anchors2)
                   }
-                }
-                _ -> parse_flow_seq(after, line_num, [value, ..acc], anchors2)
               }
           }
       }
+  }
+}
+
+/// The value of an implicit `key: value` pair in a flow sequence, added to
+/// the sequence as a one-entry mapping.
+fn parse_flow_pair(
+  key: String,
+  after_colon: List(Token),
+  line_num: Int,
+  acc: List(ExactNode),
+  anchors: Anchors,
+) -> Result(#(ExactNode, List(Token), Anchors), YamlError) {
+  case parse_flow_value(after_colon, line_num, anchors) {
+    Error(e) -> Error(e)
+    Ok(#(value, after_value, anchors2)) ->
+      parse_flow_seq(
+        after_value,
+        line_num,
+        [ExactMap([#(key, value)]), ..acc],
+        anchors2,
+      )
   }
 }
 
@@ -1168,9 +1193,10 @@ fn scalar_token_to_node(t: Token) -> ExactNode {
   }
 }
 
-/// Convert a scalar `ExactNode` into a mapping key string for implicit
-/// flow-sequence mappings (`[key: value]`). Non-scalar keys are rejected
-/// as complex keys, which are not supported.
+/// Convert an anchored scalar `ExactNode` into a mapping key string for
+/// implicit flow-sequence mappings (`[&a key: value]`). A number keeps its
+/// text. Non-scalar keys are rejected as complex keys, which are not
+/// supported.
 fn scalar_flow_key_to_string(
   node: ExactNode,
   line: Int,
@@ -1178,12 +1204,7 @@ fn scalar_flow_key_to_string(
 ) -> Result(String, YamlError) {
   case node {
     ExactString(s) -> Ok(s)
-    ExactNumber(text) ->
-      case scalar.resolve_number(text) {
-        YamlInt(i) -> Ok(int.to_string(i))
-        YamlFloat(f) -> Ok(float.to_string(f))
-        _ -> Ok(text)
-      }
+    ExactNumber(text) -> Ok(text)
     ExactBool(True) -> Ok("true")
     ExactBool(False) -> Ok("false")
     ExactNull -> Ok("null")
