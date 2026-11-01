@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.5.0] — exact numbers
+
+### Added
+
+- `yamleam/exact` parses YAML into an `ExactNode` tree, in which each number keeps the text it was written with (`ExactNumber("0.0323")`, `ExactNumber("12.50")`). Callers that need exact decimals, or integers beyond 2^53 on JavaScript, no longer have to recover them from a `Float`. A scalar is an `ExactNumber` exactly when `parse_raw` would resolve it to `YamlInt` or `YamlFloat`; everything else matches `parse_raw`. `exact.parse_documents` reads streams, and `exact.to_yaml_node` converts an exact tree to a `YamlNode` tree.
+- `scalar.classify` and `scalar.resolve_number` split plain-scalar resolution into its two steps; `scalar.resolve` is unchanged.
+
+### Changed
+
+- `parse_raw` and `parse_documents_raw` build the exact tree and convert it, so both trees always agree. Their results are unchanged.
+
 ## [1.4.0] — wrapped values
 
 ### Added
