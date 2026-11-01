@@ -3,7 +3,9 @@
 import gleam/dynamic/decode
 import gleeunit/should
 import yamleam
-import yamleam/node.{YamlBool, YamlInt, YamlList, YamlMap, YamlNull, YamlString}
+import yamleam/node.{
+  YamlBool, YamlFloat, YamlInt, YamlList, YamlMap, YamlNull, YamlString,
+}
 
 // ── Flow sequences ──────────────────────────────────────────────────────────
 
@@ -243,4 +245,52 @@ pub fn duplicate_flow_map_keys_rejected_test() {
     Error(_) -> Nil
     Ok(_) -> should.fail()
   }
+}
+
+// ── Implicit pairs in flow sequences ────────────────────────────────────────
+
+pub fn flow_pair_keys_keep_their_text_test() {
+  // Keys read as written, as they do in block and flow mappings. A number
+  // key used to pass through a float: `1.10` became `1.1`, `1e3` `1.0e3`.
+  yamleam.parse_raw("[1.10: a, 1e3: b, -0: c, ~: d, True: e, \"q\": f]")
+  |> should.equal(
+    Ok(
+      YamlList([
+        YamlMap([#("1.10", YamlString("a"))]),
+        YamlMap([#("1e3", YamlString("b"))]),
+        YamlMap([#("-0", YamlString("c"))]),
+        YamlMap([#("~", YamlString("d"))]),
+        YamlMap([#("True", YamlString("e"))]),
+        YamlMap([#("q", YamlString("f"))]),
+      ]),
+    ),
+  )
+}
+
+pub fn flow_pair_keys_match_flow_mapping_keys_test() {
+  let assert Ok(YamlList([YamlMap(pair)])) = yamleam.parse_raw("[1.10: x]")
+  let assert Ok(YamlMap(mapping)) = yamleam.parse_raw("{1.10: x}")
+  pair |> should.equal(mapping)
+}
+
+pub fn anchored_flow_pair_keys_keep_their_text_test() {
+  yamleam.parse_raw("[&k 1.10: a, &n ~: b, &t True: c, &q \"s\": d]")
+  |> should.equal(
+    Ok(
+      YamlList([
+        YamlMap([#("1.10", YamlString("a"))]),
+        YamlMap([#("~", YamlString("b"))]),
+        YamlMap([#("True", YamlString("c"))]),
+        YamlMap([#("s", YamlString("d"))]),
+      ]),
+    ),
+  )
+}
+
+pub fn anchored_flow_pair_key_can_be_aliased_test() {
+  // The anchor names the key's scalar, which an alias then reuses as a value.
+  yamleam.parse_raw("[&k 1.10: x, *k]")
+  |> should.equal(
+    Ok(YamlList([YamlMap([#("1.10", YamlString("x"))]), YamlFloat(1.1)])),
+  )
 }

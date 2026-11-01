@@ -12,6 +12,10 @@
 ////   5. Decimal float (optional sign, exponent)  →  YamlFloat
 ////   6. Otherwise                                 →  YamlString
 ////
+//// `classify` sorts the text into these kinds and keeps a number's text
+//// (`ExactNumber`); `resolve_number` turns that text into `YamlInt` or
+//// `YamlFloat`. `resolve` is the two together.
+////
 //// Following YAML 1.2, the YAML 1.1 boolean variants ("yes", "no", "on",
 //// "off") and leading-zero octals ("0777") resolve as strings. Hex and
 //// octal integers ("0x1F", "0o17") and the special floats (".inf",
@@ -21,22 +25,48 @@ import gleam/float
 import gleam/int
 import gleam/string
 import yamleam/node.{
-  type YamlNode, YamlBool, YamlFloat, YamlInt, YamlNull, YamlString,
+  type ExactNode, type YamlNode, ExactBool, ExactNull, ExactNumber, ExactString,
+  YamlBool, YamlFloat, YamlInt, YamlNull, YamlString,
 }
 
 pub fn resolve(text: String) -> YamlNode {
+  case classify(text) {
+    ExactNull -> YamlNull
+    ExactBool(b) -> YamlBool(b)
+    ExactNumber(_) -> resolve_number(text)
+    _ -> YamlString(text)
+  }
+}
+
+/// Sort a plain scalar into null, bool, number or string. A number keeps
+/// its text: it is an `ExactNumber` exactly when `resolve` would make it a
+/// `YamlInt` or a `YamlFloat`.
+pub fn classify(text: String) -> ExactNode {
   case text {
-    "" | "null" | "Null" | "NULL" | "~" -> YamlNull
-    "true" | "True" | "TRUE" -> YamlBool(True)
-    "false" | "False" | "FALSE" -> YamlBool(False)
+    "" | "null" | "Null" | "NULL" | "~" -> ExactNull
+    "true" | "True" | "TRUE" -> ExactBool(True)
+    "false" | "False" | "FALSE" -> ExactBool(False)
     _ ->
       case try_int(text) {
-        Ok(i) -> YamlInt(i)
+        Ok(_) -> ExactNumber(text)
         Error(_) ->
           case try_float(text) {
-            Ok(f) -> YamlFloat(f)
-            Error(_) -> YamlString(text)
+            Ok(_) -> ExactNumber(text)
+            Error(_) -> ExactString(text)
           }
+      }
+  }
+}
+
+/// The `YamlInt` or `YamlFloat` for a number's text, which `classify`
+/// accepted as an `ExactNumber`. Any other text is a `YamlString`.
+pub fn resolve_number(text: String) -> YamlNode {
+  case try_int(text) {
+    Ok(i) -> YamlInt(i)
+    Error(_) ->
+      case try_float(text) {
+        Ok(f) -> YamlFloat(f)
+        Error(_) -> YamlString(text)
       }
   }
 }
@@ -128,8 +158,9 @@ fn is_finite(f: Float) -> Bool {
 }
 
 fn try_float_with_exponent(text: String) -> Result(Float, Nil) {
-  // Look for "e" or "E" — handle scientific notation manually since
-  // Gleam's float.parse doesn't accept it directly.
+  // `float.parse` needs a `.` in the mantissa, so `1e10` and `5E-3` come
+  // here: the mantissa gains `.0` and the whole literal goes back to
+  // `float.parse`, which rounds it correctly on both targets.
   case string.split_once(text, "e") {
     Ok(parts) -> parse_scientific(parts)
     Error(_) ->
@@ -140,53 +171,47 @@ fn try_float_with_exponent(text: String) -> Result(Float, Nil) {
   }
 }
 
-// Float64 can represent magnitudes up to roughly 1e308. Anything past
-// that overflows to infinity (which Erlang's float arithmetic raises as
-// `badarith`). We bound the exponent conservatively to ±300 so callers
-// see scalars like `1e10000` resolve to `YamlString("1e10000")` via the
-// fallback path instead of crashing the BEAM.
+// Float64 reaches about 1e308 and, below 1e-308, loses precision until it
+// underflows to zero, where the two targets differ. Bounding the exponent
+// at ±300 keeps such scalars, like `1e10000`, strings on both targets. A
+// large mantissa can still overflow (`1000000000e300`); `try_float`'s
+// finiteness check makes that a string too.
 const max_float_exponent = 300
 
 fn parse_scientific(parts: #(String, String)) -> Result(Float, Nil) {
   let #(mantissa_text, exponent_text) = parts
-  // Mantissa may be an integer or a float
-  let mantissa_result = case float.parse(mantissa_text) {
-    Ok(f) -> Ok(f)
-    Error(_) -> int.parse(mantissa_text) |> result_map(int_to_float)
+  let mantissa = case float.parse(mantissa_text), int.parse(mantissa_text) {
+    Ok(_), _ -> Ok(mantissa_text)
+    _, Ok(_) -> Ok(mantissa_text <> ".0")
+    Error(_), Error(_) -> Error(Nil)
   }
-  let exponent_result = int.parse(strip_leading_plus(exponent_text))
-  case mantissa_result, exponent_result {
+  case mantissa, parse_exponent(exponent_text) {
     Ok(m), Ok(e) ->
-      case e >= -max_float_exponent && e <= max_float_exponent {
-        True -> Ok(m *. power_of_ten(e))
+      case int.absolute_value(e) <= max_float_exponent {
+        True ->
+          case float.parse(m <> "e" <> int.to_string(e)) {
+            Ok(f) ->
+              case is_finite(f) {
+                True -> Ok(f)
+                False -> Error(Nil)
+              }
+            Error(_) -> Error(Nil)
+          }
         False -> Error(Nil)
       }
     _, _ -> Error(Nil)
   }
 }
 
-fn strip_leading_plus(text: String) -> String {
-  case string.starts_with(text, "+") {
-    True -> string.drop_start(text, 1)
-    False -> text
+/// An exponent is an optional sign and at least one digit, so `1e+-5` and
+/// `1e5x` are not floats.
+fn parse_exponent(text: String) -> Result(Int, Nil) {
+  let digits = case text {
+    "+" <> rest | "-" <> rest -> rest
+    _ -> text
   }
-}
-
-fn result_map(r: Result(a, e), f: fn(a) -> b) -> Result(b, e) {
-  case r {
-    Ok(v) -> Ok(f(v))
-    Error(e) -> Error(e)
-  }
-}
-
-fn int_to_float(i: Int) -> Float {
-  int.to_float(i)
-}
-
-fn power_of_ten(n: Int) -> Float {
-  case n {
-    0 -> 1.0
-    _ if n > 0 -> 10.0 *. power_of_ten(n - 1)
-    _ -> 0.1 *. power_of_ten(n + 1)
+  case all_digits(digits) {
+    True -> int.parse(text)
+    False -> Error(Nil)
   }
 }

@@ -1,7 +1,7 @@
 //// YAML parser.
 ////
-//// Consumes the `List(Line)` produced by the lexer and constructs a
-//// `YamlNode` tree. Recursive descent with indent-column tracking for
+//// Consumes the `List(Line)` produced by the lexer and constructs an
+//// `ExactNode` tree. Recursive descent with indent-column tracking for
 //// block structure, and a token-level descent for flow collections.
 ////
 //// Three families of blocks:
@@ -21,14 +21,13 @@
 //// encountered; alias lookups (`*name`) read from the table at the
 //// site of use. Nothing escapes the parser.
 
-import gleam/float
 import gleam/int
 import gleam/list
 import yamleam/anchors.{type Anchors} as anchor_table
 import yamleam/error.{type YamlError, ParseError}
 import yamleam/node.{
-  type YamlNode, YamlBool, YamlFloat, YamlInt, YamlList, YamlMap, YamlNull,
-  YamlString,
+  type ExactNode, ExactBool, ExactList, ExactMap, ExactNull, ExactNumber,
+  ExactString,
 }
 import yamleam/position.{type Position}
 import yamleam/scalar
@@ -38,14 +37,14 @@ import yamleam/token.{
   Line, PlainScalar, QuotedScalar, Token,
 }
 
-/// Top-level entry: parse a list of lexer lines into a single `YamlNode`
+/// Top-level entry: parse a list of lexer lines into a single `ExactNode`
 /// tree. If the source contains multiple documents (more than one
 /// non-empty segment separated by `---`/`...`), returns a `ParseError`.
 /// Use `parse_all` if you need every document in a stream.
-pub fn parse(lines: List(Line)) -> Result(YamlNode, YamlError) {
+pub fn parse(lines: List(Line)) -> Result(ExactNode, YamlError) {
   let segments = split_into_documents(lines)
   case segments {
-    [] -> Ok(YamlNull)
+    [] -> Ok(ExactNull)
     [first] -> parse_one_document(first)
     [first, second, ..] ->
       case parse_one_document(first) {
@@ -63,17 +62,17 @@ pub fn parse(lines: List(Line)) -> Result(YamlNode, YamlError) {
 }
 
 /// Parse all documents in a YAML stream, splitting on `---` / `...`
-/// markers. Returns one `YamlNode` per non-empty document. Empty
+/// markers. Returns one `ExactNode` per non-empty document. Empty
 /// documents (between consecutive markers) are skipped.
-pub fn parse_all(lines: List(Line)) -> Result(List(YamlNode), YamlError) {
+pub fn parse_all(lines: List(Line)) -> Result(List(ExactNode), YamlError) {
   let segments = split_into_documents(lines)
   parse_segments(segments, [])
 }
 
 fn parse_segments(
   segments: List(List(Line)),
-  acc: List(YamlNode),
-) -> Result(List(YamlNode), YamlError) {
+  acc: List(ExactNode),
+) -> Result(List(ExactNode), YamlError) {
   case segments {
     [] -> Ok(list.reverse(acc))
     [seg, ..rest] ->
@@ -84,13 +83,13 @@ fn parse_segments(
   }
 }
 
-fn parse_one_document(lines: List(Line)) -> Result(YamlNode, YamlError) {
+fn parse_one_document(lines: List(Line)) -> Result(ExactNode, YamlError) {
   // Anchors are document-scoped per YAML 1.2 §6.9. A fresh table at
   // the start of each document means anchors from earlier documents
   // can't leak into later ones.
   let anchors = anchor_table.new()
   case lines {
-    [] -> Ok(YamlNull)
+    [] -> Ok(ExactNull)
     _ ->
       case parse_block(lines, 1, anchors) {
         Error(e) -> Error(e)
@@ -170,12 +169,12 @@ fn parse_block(
   lines: List(Line),
   min_indent: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case lines {
-    [] -> Ok(#(YamlNull, [], anchors))
+    [] -> Ok(#(ExactNull, [], anchors))
     [first, ..] ->
       case first.indent < min_indent {
-        True -> Ok(#(YamlNull, lines, anchors))
+        True -> Ok(#(ExactNull, lines, anchors))
         False -> dispatch_block(lines, first, anchors)
       }
   }
@@ -192,7 +191,7 @@ fn parse_entry_value(
   lines: List(Line),
   key_indent: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case lines {
     [Line(indent: indent, tokens: [Token(kind: Dash, ..), ..], ..), ..]
       if indent == key_indent
@@ -205,7 +204,7 @@ fn dispatch_block(
   lines: List(Line),
   first: Line,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   let block_indent = first.indent
   case first.tokens {
     [] ->
@@ -261,7 +260,7 @@ fn parse_mapping(
   lines: List(Line),
   indent: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   do_parse_mapping(lines, indent, [], [], anchors)
 }
 
@@ -273,15 +272,15 @@ fn parse_mapping(
 fn do_parse_mapping(
   lines: List(Line),
   indent: Int,
-  acc: List(#(String, YamlNode)),
+  acc: List(#(String, ExactNode)),
   explicit_keys: List(String),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case lines {
-    [] -> Ok(#(YamlMap(list.reverse(acc)), [], anchors))
+    [] -> Ok(#(ExactMap(list.reverse(acc)), [], anchors))
     [first, ..rest] ->
       case first.indent == indent && is_mapping_entry(first.tokens) {
-        False -> Ok(#(YamlMap(list.reverse(acc)), lines, anchors))
+        False -> Ok(#(ExactMap(list.reverse(acc)), lines, anchors))
         True ->
           case extract_mapping_entry(first) {
             Error(e) -> Error(e)
@@ -335,10 +334,10 @@ fn explicit_duplicate_error(
 /// prepended (acc is reverse-built; the prepend becomes "appended" after
 /// the final list.reverse).
 fn upsert_key(
-  acc: List(#(String, YamlNode)),
+  acc: List(#(String, ExactNode)),
   key: String,
-  value: YamlNode,
-) -> List(#(String, YamlNode)) {
+  value: ExactNode,
+) -> List(#(String, ExactNode)) {
   case list.key_find(acc, key) {
     Ok(_) ->
       list.map(acc, fn(pair) {
@@ -357,10 +356,10 @@ fn consume_mapping_value(
   first: Line,
   rest: List(Line),
   indent: Int,
-  acc: List(#(String, YamlNode)),
+  acc: List(#(String, ExactNode)),
   explicit_keys: List(String),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case value_tokens {
     [] -> {
       // Nested value comes from subsequent indented lines
@@ -420,7 +419,7 @@ fn consume_mapping_value(
 }
 
 /// Add an entry to a mapping accumulator, with special handling for the
-/// merge key `<<`. When the key is `<<`, the value must be a `YamlMap`
+/// merge key `<<`. When the key is `<<`, the value must be a `ExactMap`
 /// (typically obtained via an alias `<<: *base`) or a list of mappings;
 /// its entries are merged into the accumulator. Existing entries take
 /// precedence per YAML merge-key semantics.
@@ -429,14 +428,14 @@ fn consume_mapping_value(
 /// (because a previous merge added it), it's removed and replaced.
 fn add_mapping_entry(
   key: String,
-  value: YamlNode,
+  value: ExactNode,
   entry_line: Line,
   rest: List(Line),
   indent: Int,
-  acc: List(#(String, YamlNode)),
+  acc: List(#(String, ExactNode)),
   explicit_keys: List(String),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case key {
     "<<" -> {
       case merge_into_acc(value, acc) {
@@ -464,12 +463,12 @@ fn add_mapping_entry(
 /// semantics. Returns Error(message) if the value isn't a mapping or
 /// a list of mappings.
 fn merge_into_acc(
-  value: YamlNode,
-  acc: List(#(String, YamlNode)),
-) -> Result(List(#(String, YamlNode)), String) {
+  value: ExactNode,
+  acc: List(#(String, ExactNode)),
+) -> Result(List(#(String, ExactNode)), String) {
   case value {
-    YamlMap(pairs) -> Ok(merge_pairs_into_acc(pairs, acc))
-    YamlList(items) -> merge_list_into_acc(items, acc)
+    ExactMap(pairs) -> Ok(merge_pairs_into_acc(pairs, acc))
+    ExactList(items) -> merge_list_into_acc(items, acc)
     _ -> Error("merge key '<<' value must be a mapping or list of mappings")
   }
 }
@@ -479,14 +478,14 @@ fn merge_key_error(message: String, line: Line) -> YamlError {
 }
 
 fn merge_list_into_acc(
-  items: List(YamlNode),
-  acc: List(#(String, YamlNode)),
-) -> Result(List(#(String, YamlNode)), String) {
+  items: List(ExactNode),
+  acc: List(#(String, ExactNode)),
+) -> Result(List(#(String, ExactNode)), String) {
   case items {
     [] -> Ok(acc)
     [item, ..rest] ->
       case item {
-        YamlMap(pairs) -> {
+        ExactMap(pairs) -> {
           let next = merge_pairs_into_acc(pairs, acc)
           merge_list_into_acc(rest, next)
         }
@@ -496,9 +495,9 @@ fn merge_list_into_acc(
 }
 
 fn merge_pairs_into_acc(
-  pairs: List(#(String, YamlNode)),
-  acc: List(#(String, YamlNode)),
-) -> List(#(String, YamlNode)) {
+  pairs: List(#(String, ExactNode)),
+  acc: List(#(String, ExactNode)),
+) -> List(#(String, ExactNode)) {
   // Existing keys in `acc` take precedence over `pairs`. We append
   // pairs whose keys are NOT already present.
   case pairs {
@@ -540,9 +539,9 @@ fn inline_value_to_node(
   tokens: List(Token),
   line_num: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, Anchors), YamlError) {
+) -> Result(#(ExactNode, Anchors), YamlError) {
   case tokens {
-    [] -> Ok(#(YamlNull, anchors))
+    [] -> Ok(#(ExactNull, anchors))
 
     // Anchor before an inline value: consume the marker, parse the rest,
     // register the result, return it.
@@ -597,14 +596,14 @@ fn inline_value_to_node(
 
 // ── Flow-style parsing ──────────────────────────────────────────────────────
 // Consumes tokens starting with a flow opener (`[` or `{`) and produces
-// a `YamlNode` plus the remaining tokens. Recursive — supports nested
+// a `ExactNode` plus the remaining tokens. Recursive — supports nested
 // flow collections.
 
 fn parse_flow_value(
   tokens: List(Token),
   line_num: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Token), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Token), Anchors), YamlError) {
   case tokens {
     [] ->
       Error(ParseError(
@@ -650,9 +649,9 @@ fn parse_flow_value(
 fn parse_flow_seq(
   tokens: List(Token),
   line_num: Int,
-  acc: List(YamlNode),
+  acc: List(ExactNode),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Token), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Token), Anchors), YamlError) {
   case tokens {
     [] ->
       Error(ParseError(
@@ -662,42 +661,97 @@ fn parse_flow_seq(
       ))
     [first, ..rest] ->
       case first.kind {
-        FlowSeqEnd -> Ok(#(YamlList(list.reverse(acc)), rest, anchors))
+        FlowSeqEnd -> Ok(#(ExactList(list.reverse(acc)), rest, anchors))
         // Consecutive commas or leading comma — skip (permissive)
         Comma -> parse_flow_seq(rest, line_num, acc, anchors)
         _ ->
-          case parse_flow_value(tokens, line_num, anchors) {
-            Error(e) -> Error(e)
-            Ok(#(value, after, anchors2)) ->
-              // Check for implicit mapping: `key: value` inside flow sequence
-              // YAML 1.2 allows `[key: value, ...]` as shorthand for `[{key: value}, ...]`
-              case after {
-                [colon_tok, ..after_colon] if colon_tok.kind == Colon -> {
-                  case scalar_flow_key_to_string(value, colon_tok.position.line, colon_tok.position.column) {
-                    Error(e) -> Error(e)
-                    Ok(key_str) ->
-                      case parse_flow_value(after_colon, line_num, anchors2) {
+          // Implicit mapping: YAML 1.2 allows `[key: value, ...]` as
+          // shorthand for `[{key: value}, ...]`. A scalar key keeps its
+          // text as written, as it does in block and flow mappings.
+          case tokens {
+            [Token(kind: PlainScalar(key), ..), Token(kind: Colon, ..), ..after]
+            | [
+                Token(kind: QuotedScalar(key), ..),
+                Token(kind: Colon, ..),
+                ..after
+              ] -> parse_flow_pair(key, after, line_num, acc, anchors)
+            // An anchored key keeps its text too; the anchor names the
+            // key's scalar, as it would anywhere else.
+            [
+              Token(kind: AnchorMarker(name), ..),
+              Token(kind: PlainScalar(key), ..) as key_tok,
+              Token(kind: Colon, ..),
+              ..after
+            ]
+            | [
+                Token(kind: AnchorMarker(name), ..),
+                Token(kind: QuotedScalar(key), ..) as key_tok,
+                Token(kind: Colon, ..),
+                ..after
+              ] -> {
+              let node = scalar_token_to_node(key_tok)
+              let anchors2 = anchor_table.set(anchors, name, node)
+              parse_flow_pair(key, after, line_num, acc, anchors2)
+            }
+            _ ->
+              case parse_flow_value(tokens, line_num, anchors) {
+                Error(e) -> Error(e)
+                Ok(#(value, after, anchors2)) ->
+                  case after {
+                    [colon_tok, ..after_colon] if colon_tok.kind == Colon ->
+                      case
+                        scalar_flow_key_to_string(
+                          value,
+                          colon_tok.position.line,
+                          colon_tok.position.column,
+                        )
+                      {
                         Error(e) -> Error(e)
-                        Ok(#(map_value, after_value, anchors3)) -> {
-                          let map_node = YamlMap([#(key_str, map_value)])
-                          parse_flow_seq(after_value, line_num, [map_node, ..acc], anchors3)
-                        }
+                        Ok(key) ->
+                          parse_flow_pair(
+                            key,
+                            after_colon,
+                            line_num,
+                            acc,
+                            anchors2,
+                          )
                       }
+                    _ ->
+                      parse_flow_seq(after, line_num, [value, ..acc], anchors2)
                   }
-                }
-                _ -> parse_flow_seq(after, line_num, [value, ..acc], anchors2)
               }
           }
       }
   }
 }
 
+/// The value of an implicit `key: value` pair in a flow sequence, added to
+/// the sequence as a one-entry mapping.
+fn parse_flow_pair(
+  key: String,
+  after_colon: List(Token),
+  line_num: Int,
+  acc: List(ExactNode),
+  anchors: Anchors,
+) -> Result(#(ExactNode, List(Token), Anchors), YamlError) {
+  case parse_flow_value(after_colon, line_num, anchors) {
+    Error(e) -> Error(e)
+    Ok(#(value, after_value, anchors2)) ->
+      parse_flow_seq(
+        after_value,
+        line_num,
+        [ExactMap([#(key, value)]), ..acc],
+        anchors2,
+      )
+  }
+}
+
 fn parse_flow_map(
   tokens: List(Token),
   line_num: Int,
-  acc: List(#(String, YamlNode)),
+  acc: List(#(String, ExactNode)),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Token), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Token), Anchors), YamlError) {
   case tokens {
     [] ->
       Error(ParseError(
@@ -707,7 +761,7 @@ fn parse_flow_map(
       ))
     [first, ..rest] ->
       case first.kind {
-        FlowMapEnd -> Ok(#(YamlMap(list.reverse(acc)), rest, anchors))
+        FlowMapEnd -> Ok(#(ExactMap(list.reverse(acc)), rest, anchors))
         Comma -> parse_flow_map(rest, line_num, acc, anchors)
         PlainScalar(k) ->
           parse_flow_map_entry(k, first.position, rest, line_num, acc, anchors)
@@ -728,9 +782,9 @@ fn parse_flow_map_entry(
   key_position: Position,
   after_key: List(Token),
   line_num: Int,
-  acc: List(#(String, YamlNode)),
+  acc: List(#(String, ExactNode)),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Token), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Token), Anchors), YamlError) {
   case after_key {
     [Token(kind: Colon, ..), ..after_colon] ->
       case parse_flow_value(after_colon, line_num, anchors) {
@@ -767,21 +821,21 @@ fn parse_sequence(
   lines: List(Line),
   indent: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   do_parse_sequence(lines, indent, [], anchors)
 }
 
 fn do_parse_sequence(
   lines: List(Line),
   indent: Int,
-  acc: List(YamlNode),
+  acc: List(ExactNode),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case lines {
-    [] -> Ok(#(YamlList(list.reverse(acc)), [], anchors))
+    [] -> Ok(#(ExactList(list.reverse(acc)), [], anchors))
     [first, ..rest] ->
       case first.indent == indent && starts_with_dash(first.tokens) {
-        False -> Ok(#(YamlList(list.reverse(acc)), lines, anchors))
+        False -> Ok(#(ExactList(list.reverse(acc)), lines, anchors))
         True ->
           case parse_sequence_item(first, rest, indent, anchors) {
             Error(e) -> Error(e)
@@ -804,7 +858,7 @@ fn parse_sequence_item(
   rest: List(Line),
   seq_indent: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   // Drop the leading Dash; what's left after it is the inline content
   let content = drop_first(dash_line.tokens)
 
@@ -894,7 +948,7 @@ fn parse_sequence_item_after_anchor(
   rest_lines: List(Line),
   seq_indent: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case rest_content {
     [] -> {
       // `- &name` followed by a nested block on subsequent lines
@@ -931,7 +985,7 @@ fn parse_inline_mapping_item(
   value_tokens: List(Token),
   rest_lines: List(Line),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   let mapping_indent = first_tok.position.column
 
   case value_tokens {
@@ -979,12 +1033,12 @@ fn parse_inline_mapping_item(
 /// handling the merge-key special case.
 fn start_inline_mapping(
   key: String,
-  value: YamlNode,
+  value: ExactNode,
   entry_line: Line,
   rest: List(Line),
   mapping_indent: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case key {
     "<<" -> {
       case merge_into_acc(value, []) {
@@ -1008,17 +1062,17 @@ fn start_inline_mapping(
 /// Stops as soon as a line breaks the indent contract (column ≠
 /// `mapping_indent` or not shaped like a mapping entry).
 fn continue_inline_mapping(
-  acc_reversed: List(#(String, YamlNode)),
+  acc_reversed: List(#(String, ExactNode)),
   explicit_keys: List(String),
   lines: List(Line),
   mapping_indent: Int,
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case lines {
-    [] -> Ok(#(YamlMap(list.reverse(acc_reversed)), [], anchors))
+    [] -> Ok(#(ExactMap(list.reverse(acc_reversed)), [], anchors))
     [first, ..rest] ->
       case first.indent == mapping_indent && is_mapping_entry(first.tokens) {
-        False -> Ok(#(YamlMap(list.reverse(acc_reversed)), lines, anchors))
+        False -> Ok(#(ExactMap(list.reverse(acc_reversed)), lines, anchors))
         True ->
           case extract_mapping_entry(first) {
             Error(e) -> Error(e)
@@ -1054,10 +1108,10 @@ fn consume_inline_mapping_value(
   first: Line,
   rest: List(Line),
   mapping_indent: Int,
-  acc_reversed: List(#(String, YamlNode)),
+  acc_reversed: List(#(String, ExactNode)),
   explicit_keys: List(String),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case value_tokens {
     [] -> {
       case parse_entry_value(rest, mapping_indent, anchors) {
@@ -1114,14 +1168,14 @@ fn consume_inline_mapping_value(
 
 fn add_inline_mapping_entry(
   key: String,
-  value: YamlNode,
+  value: ExactNode,
   entry_line: Line,
   rest: List(Line),
   mapping_indent: Int,
-  acc_reversed: List(#(String, YamlNode)),
+  acc_reversed: List(#(String, ExactNode)),
   explicit_keys: List(String),
   anchors: Anchors,
-) -> Result(#(YamlNode, List(Line), Anchors), YamlError) {
+) -> Result(#(ExactNode, List(Line), Anchors), YamlError) {
   case key {
     "<<" -> {
       case merge_into_acc(value, acc_reversed) {
@@ -1149,29 +1203,29 @@ fn add_inline_mapping_entry(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-fn scalar_token_to_node(t: Token) -> YamlNode {
+fn scalar_token_to_node(t: Token) -> ExactNode {
   case t.kind {
-    PlainScalar(text) -> scalar.resolve(text)
-    QuotedScalar(text) -> YamlString(text)
-    _ -> YamlNull
+    PlainScalar(text) -> scalar.classify(text)
+    QuotedScalar(text) -> ExactString(text)
+    _ -> ExactNull
   }
 }
 
-/// Convert a scalar YamlNode into a mapping key string for implicit
-/// flow-sequence mappings (`[key: value]`). Non-scalar keys are rejected
-/// as complex keys, which are not supported.
+/// Convert a scalar `ExactNode` reached through an alias into a mapping key
+/// string for implicit flow-sequence mappings (`[*a: value]`). A number
+/// keeps its text. Non-scalar keys are rejected as complex keys, which are not
+/// supported.
 fn scalar_flow_key_to_string(
-  node: YamlNode,
+  node: ExactNode,
   line: Int,
   column: Int,
 ) -> Result(String, YamlError) {
   case node {
-    YamlString(s) -> Ok(s)
-    YamlInt(i) -> Ok(int.to_string(i))
-    YamlFloat(f) -> Ok(float.to_string(f))
-    YamlBool(True) -> Ok("true")
-    YamlBool(False) -> Ok("false")
-    YamlNull -> Ok("null")
+    ExactString(s) -> Ok(s)
+    ExactNumber(text) -> Ok(text)
+    ExactBool(True) -> Ok("true")
+    ExactBool(False) -> Ok("false")
+    ExactNull -> Ok("null")
     _ ->
       Error(ParseError(
         message: "complex keys are not supported in flow sequence pairs",

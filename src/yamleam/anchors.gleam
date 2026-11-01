@@ -7,19 +7,19 @@
 //// looked up at alias sites (`get/2`). Nothing escapes the parser.
 
 import gleam/dict.{type Dict}
-import yamleam/node.{type YamlNode}
+import yamleam/node.{type ExactNode}
 
 pub type Anchors =
-  Dict(String, YamlNode)
+  Dict(String, ExactNode)
 
 pub fn new() -> Anchors {
   dict.new()
 }
 
-pub fn set(anchors: Anchors, name: String, value: YamlNode) -> Anchors {
+pub fn set(anchors: Anchors, name: String, value: ExactNode) -> Anchors {
   dict.insert(anchors, name, value)
 }
 
-pub fn get(anchors: Anchors, name: String) -> Result(YamlNode, Nil) {
+pub fn get(anchors: Anchors, name: String) -> Result(ExactNode, Nil) {
   dict.get(anchors, name)
 }

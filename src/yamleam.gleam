@@ -3,7 +3,9 @@
 //// Parse YAML into a typed `YamlNode` tree with `parse_raw`, or decode it
 //// into your own types with `parse` and a standard `gleam/dynamic/decode`
 //// decoder, the same kind `gleam_json` takes. `parse_documents` and
-//// `parse_documents_raw` read multi-document streams.
+//// `parse_documents_raw` read multi-document streams. `yamleam/exact`
+//// parses into a tree that keeps every number's text, for numbers that
+//// must stay exact.
 ////
 //// Pattern-match the tree with the constructors in `yamleam/node`, and
 //// errors with those in `yamleam/error`. The README has the feature
@@ -13,9 +15,8 @@ import gleam/dynamic/decode
 import gleam/list
 import yamleam/decoder
 import yamleam/error
-import yamleam/lexer
+import yamleam/exact
 import yamleam/node
-import yamleam/parser
 
 // ── Re-exports ──────────────────────────────────────────────────────────────
 
@@ -60,10 +61,13 @@ pub fn yaml_map(pairs: List(#(String, YamlNode))) -> YamlNode {
 /// Returns a `ParseError` for invalid YAML, or an `Unsupported` error that
 /// names a feature outside the supported set. Reads exactly one document;
 /// use `parse_documents_raw` for multi-document streams.
+///
+/// Numbers resolve to `YamlInt` and `YamlFloat`. When a number must stay
+/// exactly as written, use `yamleam/exact.parse`, which keeps its text.
 pub fn parse_raw(source: String) -> Result(YamlNode, YamlError) {
-  case lexer.tokenize(source) {
+  case exact.parse(source) {
     Error(e) -> Error(e)
-    Ok(lines) -> parser.parse(lines)
+    Ok(tree) -> Ok(exact.to_yaml_node(tree))
   }
 }
 
@@ -73,7 +77,10 @@ pub fn parse_raw(source: String) -> Result(YamlNode, YamlError) {
 /// type used by `gleam_json.parse`. Decoders written for JSON sources
 /// can be reused unchanged against YAML sources. Reads exactly one
 /// document; use `parse_documents` for multi-document streams.
-pub fn parse(source: String, decoder: decode.Decoder(a)) -> Result(a, YamlError) {
+pub fn parse(
+  source: String,
+  decoder: decode.Decoder(a),
+) -> Result(a, YamlError) {
   case parse_raw(source) {
     Error(e) -> Error(e)
     Ok(tree) -> {
@@ -96,10 +103,12 @@ pub fn parse(source: String, decoder: decode.Decoder(a)) -> Result(a, YamlError)
 /// An empty stream returns `[]`.
 ///
 /// Use `parse_documents` if you want each document run through a decoder.
-pub fn parse_documents_raw(source: String) -> Result(List(YamlNode), YamlError) {
-  case lexer.tokenize(source) {
+pub fn parse_documents_raw(
+  source: String,
+) -> Result(List(YamlNode), YamlError) {
+  case exact.parse_documents(source) {
     Error(e) -> Error(e)
-    Ok(lines) -> parser.parse_all(lines)
+    Ok(trees) -> Ok(list.map(trees, exact.to_yaml_node))
   }
 }
 

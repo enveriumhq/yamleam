@@ -16,6 +16,8 @@ already use for JSON.
   anchors, aliases and merge keys, multi-document streams, and JSON documents.
 - **YAML 1.2 semantics.** `no`, `off` and `0777` stay exactly as written: no
   Norway problem, no surprise octals.
+- **Exact numbers when you need them.** `yamleam/exact` hands you `0.0323` as
+  the text `"0.0323"`, ready for a decimal library, instead of a `Float`.
 - **Explicit errors.** Invalid input returns a typed error with its line and
   column, and features outside the supported set say so by name.
 - **Stable API.** The 1.x public surface is covered by semantic versioning.
@@ -36,7 +38,8 @@ Erlang and JavaScript targets.
 
 On JavaScript, numbers follow JavaScript's rules, as they do for `gleam_json`.
 Integers beyond 2^53 lose precision, and an integral float such as `8080.0`
-satisfies `decode.int`.
+satisfies `decode.int`. On either target, `yamleam/exact` gives you a number's
+own text instead (see [Exact numbers](#exact-numbers)).
 
 ## Quick start
 
@@ -239,6 +242,31 @@ A continuation line must be indented more than its key, and a comment ends
 the value. Keys stay on one line: a `:` after a wrapped value is a
 `ParseError`.
 
+### Exact numbers
+
+`parse_raw` resolves numbers to `Int` and `Float`, and a `Float` holds about
+17 significant digits. When a number must stay exactly as written, such as a
+price, a rate or a threshold for a decimal library, parse with `yamleam/exact`.
+Its tree has the same shape, with each number as its source text:
+
+```gleam
+import yamleam/exact
+import yamleam/node.{ExactMap, ExactNumber}
+
+pub fn main() {
+  let assert Ok(ExactMap([#("rate", ExactNumber(rate))])) =
+    exact.parse("rate: 0.10000000000000000555")
+
+  // rate == "0.10000000000000000555"
+}
+```
+
+A scalar is an `ExactNumber` exactly when `parse_raw` would make it a
+`YamlInt` or `YamlFloat`, and its text keeps the sign and exponent as written
+(`+1.5e3`). Quoted numbers, `01234` and `0x1F` stay strings. `exact.parse_documents`
+reads streams, and `exact.to_yaml_node` turns an exact tree into the
+`YamlNode` tree `parse_raw` returns.
+
 ### Errors
 
 Every failure is a `YamlError`:
@@ -276,6 +304,7 @@ decoder's rejection, `yaml decode error at spec.port: expected Int, found String
 | Flow collections | `[1, 2, 3]` and `{a: 1, b: 2}`, on one line or across several, nested, inside block context |
 | JSON | Pretty-printed and compact documents (`{"a":1}`), `\uXXXX` escapes and surrogate pairs |
 | Plain scalars | Null, booleans, decimal integers, decimal floats with exponents, strings; text wrapped across lines |
+| Exact numbers | `yamleam/exact` keeps each number's source text, for decimals that must not pass through a `Float` |
 | Quoted strings | Single-quoted (`''` escape); double-quoted with every YAML 1.2 escape (`\n`, `\t`, `\"`, `\x41`, `\u00e9`, `\U0001F600`, …); both fold across lines |
 | Block scalars | Literal (`\|`, `\|-`, `\|+`) and folded (`>`, `>-`, `>+`), indentation auto-detected |
 | Reuse | Anchors (`&name`), aliases (`*name`), merge keys (`<<: *base`, `<<: [*a, *b]`) |
@@ -297,7 +326,8 @@ Plain (unquoted) scalars resolve by the YAML 1.2 rules:
 | `01234`, `0777` | `YamlString`, with the leading zeros kept |
 | anything else | `YamlString` |
 
-Quoted scalars are always strings, so `"123"` is `YamlString("123")`.
+Quoted scalars are always strings, so `"123"` is `YamlString("123")`. In the
+`yamleam/exact` tree, an integer or float is an `ExactNumber` holding its text.
 
 ## Design
 

@@ -182,15 +182,17 @@ fn tokenize_normal_line(
   indent_count: Int,
   rest_raw: List(String),
 ) -> Result(#(List(Line), List(String), Int), YamlError) {
-  case tokenize_content_ml(
-    content_graphemes,
-    line_num,
-    start_col,
-    0,
-    [],
-    rest_raw,
-    0,
-  ) {
+  case
+    tokenize_content_ml(
+      content_graphemes,
+      line_num,
+      start_col,
+      0,
+      [],
+      rest_raw,
+      0,
+    )
+  {
     Error(e) -> Error(e)
     Ok(#([], _, new_rest, extra)) -> Ok(#([], new_rest, extra))
     Ok(#(tokens, None, new_rest, extra)) -> {
@@ -263,10 +265,20 @@ fn tokenize_content_ml(
     [] -> end_of_line(line_num, flow_depth, acc, rest_raw, extra_consumed)
 
     // Whitespace between tokens
-    [" ", ..rest] -> tokenize_content_ml(rest, line_num, col + 1, flow_depth, acc, rest_raw, extra_consumed)
+    [" ", ..rest] ->
+      tokenize_content_ml(
+        rest,
+        line_num,
+        col + 1,
+        flow_depth,
+        acc,
+        rest_raw,
+        extra_consumed,
+      )
 
     // Inline comment terminator
-    ["#", ..] -> end_of_line(line_num, flow_depth, acc, rest_raw, extra_consumed)
+    ["#", ..] ->
+      end_of_line(line_num, flow_depth, acc, rest_raw, extra_consumed)
 
     // Dash — sequence item marker (only if followed by space or EOL
     // and only in block context; inside flow, `-` is plain content)
@@ -274,10 +286,26 @@ fn tokenize_content_ml(
       case flow_depth == 0 && is_separator_followup(rest) {
         True -> {
           let tok = Token(kind: Dash, position: Position(line_num, col))
-          tokenize_content_ml(rest, line_num, col + 1, flow_depth, [tok, ..acc], rest_raw, extra_consumed)
+          tokenize_content_ml(
+            rest,
+            line_num,
+            col + 1,
+            flow_depth,
+            [tok, ..acc],
+            rest_raw,
+            extra_consumed,
+          )
         }
         False ->
-          read_plain_then_continue_ml(graphemes, line_num, col, flow_depth, acc, rest_raw, extra_consumed)
+          read_plain_then_continue_ml(
+            graphemes,
+            line_num,
+            col,
+            flow_depth,
+            acc,
+            rest_raw,
+            extra_consumed,
+          )
       }
 
     // Colon — mapping separator
@@ -287,7 +315,15 @@ fn tokenize_content_ml(
       case is_separator_followup(rest) || follows_json_node(flow_depth, acc) {
         True -> {
           let tok = Token(kind: Colon, position: Position(line_num, col))
-          tokenize_content_ml(rest, line_num, col + 1, flow_depth, [tok, ..acc], rest_raw, extra_consumed)
+          tokenize_content_ml(
+            rest,
+            line_num,
+            col + 1,
+            flow_depth,
+            [tok, ..acc],
+            rest_raw,
+            extra_consumed,
+          )
         }
         False ->
           Error(ParseError(
@@ -328,15 +364,30 @@ fn tokenize_content_ml(
 
     // Double-quoted string (supports multi-line via rest_raw)
     ["\"", ..rest] ->
-      case read_double_quoted_ml(rest, line_num, col + 1, [], [], rest_raw, extra_consumed) {
+      case
+        read_double_quoted_ml(
+          rest,
+          line_num,
+          col + 1,
+          [],
+          [],
+          rest_raw,
+          extra_consumed,
+        )
+      {
         Error(e) -> Error(e)
         Ok(#(text, remaining, new_col, new_rest_raw, new_extra)) -> {
           let tok =
             Token(kind: QuotedScalar(text), position: Position(line_num, col))
-          tokenize_content_ml(remaining, line_num, new_col, flow_depth, [
-            tok,
-            ..acc
-          ], new_rest_raw, new_extra)
+          tokenize_content_ml(
+            remaining,
+            line_num,
+            new_col,
+            flow_depth,
+            [tok, ..acc],
+            new_rest_raw,
+            new_extra,
+          )
         }
       }
 
@@ -377,7 +428,15 @@ fn tokenize_content_ml(
     // Flow-style sequence open
     ["[", ..rest] -> {
       let tok = Token(kind: FlowSeqStart, position: Position(line_num, col))
-      tokenize_content_ml(rest, line_num, col + 1, flow_depth + 1, [tok, ..acc], rest_raw, extra_consumed)
+      tokenize_content_ml(
+        rest,
+        line_num,
+        col + 1,
+        flow_depth + 1,
+        [tok, ..acc],
+        rest_raw,
+        extra_consumed,
+      )
     }
 
     // Flow-style sequence close
@@ -387,13 +446,29 @@ fn tokenize_content_ml(
         True -> flow_depth - 1
         False -> 0
       }
-      tokenize_content_ml(rest, line_num, col + 1, new_depth, [tok, ..acc], rest_raw, extra_consumed)
+      tokenize_content_ml(
+        rest,
+        line_num,
+        col + 1,
+        new_depth,
+        [tok, ..acc],
+        rest_raw,
+        extra_consumed,
+      )
     }
 
     // Flow-style mapping open
     ["{", ..rest] -> {
       let tok = Token(kind: FlowMapStart, position: Position(line_num, col))
-      tokenize_content_ml(rest, line_num, col + 1, flow_depth + 1, [tok, ..acc], rest_raw, extra_consumed)
+      tokenize_content_ml(
+        rest,
+        line_num,
+        col + 1,
+        flow_depth + 1,
+        [tok, ..acc],
+        rest_raw,
+        extra_consumed,
+      )
     }
 
     // Flow-style mapping close
@@ -403,13 +478,29 @@ fn tokenize_content_ml(
         True -> flow_depth - 1
         False -> 0
       }
-      tokenize_content_ml(rest, line_num, col + 1, new_depth, [tok, ..acc], rest_raw, extra_consumed)
+      tokenize_content_ml(
+        rest,
+        line_num,
+        col + 1,
+        new_depth,
+        [tok, ..acc],
+        rest_raw,
+        extra_consumed,
+      )
     }
 
     // Comma — separator inside flow collections only
     [",", ..rest] if flow_depth > 0 -> {
       let tok = Token(kind: Comma, position: Position(line_num, col))
-      tokenize_content_ml(rest, line_num, col + 1, flow_depth, [tok, ..acc], rest_raw, extra_consumed)
+      tokenize_content_ml(
+        rest,
+        line_num,
+        col + 1,
+        flow_depth,
+        [tok, ..acc],
+        rest_raw,
+        extra_consumed,
+      )
     }
 
     ["&", ..rest] ->
@@ -424,10 +515,15 @@ fn tokenize_content_ml(
         Ok(#(name, remaining, new_col)) -> {
           let tok =
             Token(kind: AnchorMarker(name), position: Position(line_num, col))
-          tokenize_content_ml(remaining, line_num, new_col, flow_depth, [
-            tok,
-            ..acc
-          ], rest_raw, extra_consumed)
+          tokenize_content_ml(
+            remaining,
+            line_num,
+            new_col,
+            flow_depth,
+            [tok, ..acc],
+            rest_raw,
+            extra_consumed,
+          )
         }
       }
 
@@ -443,22 +539,32 @@ fn tokenize_content_ml(
         Ok(#(name, remaining, new_col)) -> {
           let tok =
             Token(kind: AliasMarker(name), position: Position(line_num, col))
-          tokenize_content_ml(remaining, line_num, new_col, flow_depth, [
-            tok,
-            ..acc
-          ], rest_raw, extra_consumed)
+          tokenize_content_ml(
+            remaining,
+            line_num,
+            new_col,
+            flow_depth,
+            [tok, ..acc],
+            rest_raw,
+            extra_consumed,
+          )
         }
       }
 
     ["!", ..] ->
-      Error(Unsupported(
-        feature: "tags ('!type')",
-        line: line_num,
-        column: col,
-      ))
+      Error(Unsupported(feature: "tags ('!type')", line: line_num, column: col))
 
     // Anything else: plain scalar
-    _ -> read_plain_then_continue_ml(graphemes, line_num, col, flow_depth, acc, rest_raw, extra_consumed)
+    _ ->
+      read_plain_then_continue_ml(
+        graphemes,
+        line_num,
+        col,
+        flow_depth,
+        acc,
+        rest_raw,
+        extra_consumed,
+      )
   }
 }
 
@@ -946,9 +1052,25 @@ fn read_double_quoted_ml(
       Ok(#(text, rest, col + 1, rest_raw, extra_consumed))
     }
     [" " as c, ..rest] | ["\t" as c, ..rest] ->
-      read_double_quoted_ml(rest, line_num, col + 1, acc, [c, ..white], rest_raw, extra_consumed)
+      read_double_quoted_ml(
+        rest,
+        line_num,
+        col + 1,
+        acc,
+        [c, ..white],
+        rest_raw,
+        extra_consumed,
+      )
     [c, ..rest] ->
-      read_double_quoted_ml(rest, line_num, col + 1, [c, ..list.append(white, acc)], [], rest_raw, extra_consumed)
+      read_double_quoted_ml(
+        rest,
+        line_num,
+        col + 1,
+        [c, ..list.append(white, acc)],
+        [],
+        rest_raw,
+        extra_consumed,
+      )
   }
 }
 
@@ -1378,7 +1500,10 @@ fn do_fold_walk(
   }
 }
 
-fn fold_transition(state: FoldState, kind: FoldLineKind) -> #(FoldState, String) {
+fn fold_transition(
+  state: FoldState,
+  kind: FoldLineKind,
+) -> #(FoldState, String) {
   case state, kind {
     // From Empty (no content emitted yet)
     FoldEmpty, FoldBlank -> #(FoldAfterBlank, "")

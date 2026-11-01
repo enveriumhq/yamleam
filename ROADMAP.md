@@ -60,6 +60,12 @@ YAML that services and pipelines run on:
   OpenAPI descriptions, wraps long values across lines. They fold as YAML 1.2
   specifies, and a key that would span lines is an explicit error.
 
+## 1.5: exact numbers (shipped)
+
+- **Numbers as written:** `yamleam/exact` returns a tree in which each number
+  keeps its source text, for decimals that must not pass through a `Float`.
+  It is a second tree beside `YamlNode`, so existing code is unaffected.
+
 ## Later in 1.x
 
 - **Core-schema tags (next):** `!!str`, `!!int`, `!!float`, `!!bool`, `!!null`,
