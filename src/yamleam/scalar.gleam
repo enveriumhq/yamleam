@@ -12,6 +12,10 @@
 ////   5. Decimal float (optional sign, exponent)  →  YamlFloat
 ////   6. Otherwise                                 →  YamlString
 ////
+//// `classify` sorts the text into these kinds and keeps a number's text
+//// (`ExactNumber`); `resolve_number` turns that text into `YamlInt` or
+//// `YamlFloat`. `resolve` is the two together.
+////
 //// Following YAML 1.2, the YAML 1.1 boolean variants ("yes", "no", "on",
 //// "off") and leading-zero octals ("0777") resolve as strings. Hex and
 //// octal integers ("0x1F", "0o17") and the special floats (".inf",
@@ -21,22 +25,48 @@ import gleam/float
 import gleam/int
 import gleam/string
 import yamleam/node.{
-  type YamlNode, YamlBool, YamlFloat, YamlInt, YamlNull, YamlString,
+  type ExactNode, type YamlNode, ExactBool, ExactNull, ExactNumber, ExactString,
+  YamlBool, YamlFloat, YamlInt, YamlNull, YamlString,
 }
 
 pub fn resolve(text: String) -> YamlNode {
+  case classify(text) {
+    ExactNull -> YamlNull
+    ExactBool(b) -> YamlBool(b)
+    ExactNumber(_) -> resolve_number(text)
+    _ -> YamlString(text)
+  }
+}
+
+/// Sort a plain scalar into null, bool, number or string. A number keeps
+/// its text: it is an `ExactNumber` exactly when `resolve` would make it a
+/// `YamlInt` or a `YamlFloat`.
+pub fn classify(text: String) -> ExactNode {
   case text {
-    "" | "null" | "Null" | "NULL" | "~" -> YamlNull
-    "true" | "True" | "TRUE" -> YamlBool(True)
-    "false" | "False" | "FALSE" -> YamlBool(False)
+    "" | "null" | "Null" | "NULL" | "~" -> ExactNull
+    "true" | "True" | "TRUE" -> ExactBool(True)
+    "false" | "False" | "FALSE" -> ExactBool(False)
     _ ->
       case try_int(text) {
-        Ok(i) -> YamlInt(i)
+        Ok(_) -> ExactNumber(text)
         Error(_) ->
           case try_float(text) {
-            Ok(f) -> YamlFloat(f)
-            Error(_) -> YamlString(text)
+            Ok(_) -> ExactNumber(text)
+            Error(_) -> ExactString(text)
           }
+      }
+  }
+}
+
+/// The `YamlInt` or `YamlFloat` for a number's text, which `classify`
+/// accepted as an `ExactNumber`. Any other text is a `YamlString`.
+pub fn resolve_number(text: String) -> YamlNode {
+  case try_int(text) {
+    Ok(i) -> YamlInt(i)
+    Error(_) ->
+      case try_float(text) {
+        Ok(f) -> YamlFloat(f)
+        Error(_) -> YamlString(text)
       }
   }
 }

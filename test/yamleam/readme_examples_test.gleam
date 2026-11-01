@@ -6,8 +6,10 @@ import gleam/int
 import gleeunit/should
 import yamleam
 import yamleam/error.{DecodeError, ParseError, Unsupported}
+import yamleam/exact
 import yamleam/node.{
-  YamlBool, YamlFloat, YamlInt, YamlList, YamlMap, YamlNull, YamlString,
+  ExactMap, ExactNumber, YamlBool, YamlFloat, YamlInt, YamlList, YamlMap,
+  YamlNull, YamlString,
 }
 
 // ── Quick start ─────────────────────────────────────────────────────────────
@@ -226,6 +228,14 @@ summary: >
       ]),
     ),
   )
+}
+
+// ── Exact numbers ───────────────────────────────────────────────────────────
+
+pub fn exact_numbers_test() {
+  let assert Ok(ExactMap([#("rate", ExactNumber(rate))])) =
+    exact.parse("rate: 0.10000000000000000555")
+  rate |> should.equal("0.10000000000000000555")
 }
 
 // ── Wrapped values ──────────────────────────────────────────────────────────
