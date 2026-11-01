@@ -675,6 +675,24 @@ fn parse_flow_seq(
                 Token(kind: Colon, ..),
                 ..after
               ] -> parse_flow_pair(key, after, line_num, acc, anchors)
+            // An anchored key keeps its text too; the anchor names the
+            // key's scalar, as it would anywhere else.
+            [
+              Token(kind: AnchorMarker(name), ..),
+              Token(kind: PlainScalar(key), ..) as key_tok,
+              Token(kind: Colon, ..),
+              ..after
+            ]
+            | [
+                Token(kind: AnchorMarker(name), ..),
+                Token(kind: QuotedScalar(key), ..) as key_tok,
+                Token(kind: Colon, ..),
+                ..after
+              ] -> {
+              let node = scalar_token_to_node(key_tok)
+              let anchors2 = anchor_table.set(anchors, name, node)
+              parse_flow_pair(key, after, line_num, acc, anchors2)
+            }
             _ ->
               case parse_flow_value(tokens, line_num, anchors) {
                 Error(e) -> Error(e)
@@ -1193,9 +1211,9 @@ fn scalar_token_to_node(t: Token) -> ExactNode {
   }
 }
 
-/// Convert an anchored scalar `ExactNode` into a mapping key string for
-/// implicit flow-sequence mappings (`[&a key: value]`). A number keeps its
-/// text. Non-scalar keys are rejected as complex keys, which are not
+/// Convert a scalar `ExactNode` reached through an alias into a mapping key
+/// string for implicit flow-sequence mappings (`[*a: value]`). A number
+/// keeps its text. Non-scalar keys are rejected as complex keys, which are not
 /// supported.
 fn scalar_flow_key_to_string(
   node: ExactNode,

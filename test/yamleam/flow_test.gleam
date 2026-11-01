@@ -3,7 +3,9 @@
 import gleam/dynamic/decode
 import gleeunit/should
 import yamleam
-import yamleam/node.{YamlBool, YamlInt, YamlList, YamlMap, YamlNull, YamlString}
+import yamleam/node.{
+  YamlBool, YamlFloat, YamlInt, YamlList, YamlMap, YamlNull, YamlString,
+}
 
 // ── Flow sequences ──────────────────────────────────────────────────────────
 
@@ -271,7 +273,24 @@ pub fn flow_pair_keys_match_flow_mapping_keys_test() {
   pair |> should.equal(mapping)
 }
 
-pub fn anchored_flow_pair_number_key_keeps_its_text_test() {
-  yamleam.parse_raw("[&k 1.10: x]")
-  |> should.equal(Ok(YamlList([YamlMap([#("1.10", YamlString("x"))])])))
+pub fn anchored_flow_pair_keys_keep_their_text_test() {
+  yamleam.parse_raw("[&k 1.10: a, &n ~: b, &t True: c, &q \"s\": d]")
+  |> should.equal(
+    Ok(
+      YamlList([
+        YamlMap([#("1.10", YamlString("a"))]),
+        YamlMap([#("~", YamlString("b"))]),
+        YamlMap([#("True", YamlString("c"))]),
+        YamlMap([#("s", YamlString("d"))]),
+      ]),
+    ),
+  )
+}
+
+pub fn anchored_flow_pair_key_can_be_aliased_test() {
+  // The anchor names the key's scalar, which an alias then reuses as a value.
+  yamleam.parse_raw("[&k 1.10: x, *k]")
+  |> should.equal(
+    Ok(YamlList([YamlMap([#("1.10", YamlString("x"))]), YamlFloat(1.1)])),
+  )
 }
