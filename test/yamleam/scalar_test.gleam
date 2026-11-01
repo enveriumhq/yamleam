@@ -65,6 +65,28 @@ pub fn out_of_range_exponent_resolves_to_string_test() {
   scalar.resolve("2.5E500") |> should.equal(YamlString("2.5E500"))
 }
 
+pub fn exponent_without_a_point_is_correctly_rounded_test() {
+  // These used to be computed by repeated multiplication by 0.1, which was
+  // off in the last bit.
+  scalar.resolve("1e-5") |> should.equal(YamlFloat(1.0e-5))
+  scalar.resolve("3e-7") |> should.equal(YamlFloat(3.0e-7))
+  scalar.resolve("5E-3") |> should.equal(YamlFloat(0.005))
+  scalar.resolve("-2e-4") |> should.equal(YamlFloat(-2.0e-4))
+}
+
+pub fn overflowing_mantissa_resolves_to_string_test() {
+  // The exponent is in range, but the value is past Float64. This used to
+  // crash the BEAM with badarith.
+  scalar.resolve("1000000000e300")
+  |> should.equal(YamlString("1000000000e300"))
+}
+
+pub fn malformed_exponent_resolves_to_string_test() {
+  scalar.resolve("1e+-5") |> should.equal(YamlString("1e+-5"))
+  scalar.resolve("1e") |> should.equal(YamlString("1e"))
+  scalar.resolve("1e5x") |> should.equal(YamlString("1e5x"))
+}
+
 pub fn unquoted_text_resolves_to_string_test() {
   scalar.resolve("hello") |> should.equal(YamlString("hello"))
   scalar.resolve("hello world") |> should.equal(YamlString("hello world"))
