@@ -16,6 +16,8 @@ already use for JSON.
   anchors, aliases and merge keys, multi-document streams, and JSON documents.
 - **YAML 1.2 semantics.** `no`, `off` and `0777` stay exactly as written: no
   Norway problem, no surprise octals.
+- **Exact numbers when you need them.** `yamleam/exact` hands you `0.0323` as
+  the text `"0.0323"`, ready for a decimal library, instead of a `Float`.
 - **Explicit errors.** Invalid input returns a typed error with its line and
   column, and features outside the supported set say so by name.
 - **Stable API.** The 1.x public surface is covered by semantic versioning.
@@ -302,6 +304,7 @@ decoder's rejection, `yaml decode error at spec.port: expected Int, found String
 | Flow collections | `[1, 2, 3]` and `{a: 1, b: 2}`, on one line or across several, nested, inside block context |
 | JSON | Pretty-printed and compact documents (`{"a":1}`), `\uXXXX` escapes and surrogate pairs |
 | Plain scalars | Null, booleans, decimal integers, decimal floats with exponents, strings; text wrapped across lines |
+| Exact numbers | `yamleam/exact` keeps each number's source text, for decimals that must not pass through a `Float` |
 | Quoted strings | Single-quoted (`''` escape); double-quoted with every YAML 1.2 escape (`\n`, `\t`, `\"`, `\x41`, `\u00e9`, `\U0001F600`, …); both fold across lines |
 | Block scalars | Literal (`\|`, `\|-`, `\|+`) and folded (`>`, `>-`, `>+`), indentation auto-detected |
 | Reuse | Anchors (`&name`), aliases (`*name`), merge keys (`<<: *base`, `<<: [*a, *b]`) |

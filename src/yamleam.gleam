@@ -61,6 +61,9 @@ pub fn yaml_map(pairs: List(#(String, YamlNode))) -> YamlNode {
 /// Returns a `ParseError` for invalid YAML, or an `Unsupported` error that
 /// names a feature outside the supported set. Reads exactly one document;
 /// use `parse_documents_raw` for multi-document streams.
+///
+/// Numbers resolve to `YamlInt` and `YamlFloat`. When a number must stay
+/// exactly as written, use `yamleam/exact.parse`, which keeps its text.
 pub fn parse_raw(source: String) -> Result(YamlNode, YamlError) {
   case exact.parse(source) {
     Error(e) -> Error(e)

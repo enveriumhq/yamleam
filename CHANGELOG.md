@@ -13,9 +13,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `yamleam/exact` parses YAML into an `ExactNode` tree, in which each number keeps the text it was written with (`ExactNumber("0.0323")`, `ExactNumber("12.50")`). Callers that need exact decimals, or integers beyond 2^53 on JavaScript, no longer have to recover them from a `Float`. A scalar is an `ExactNumber` exactly when `parse_raw` would resolve it to `YamlInt` or `YamlFloat`; everything else matches `parse_raw`. `exact.parse_documents` reads streams, and `exact.to_yaml_node` converts an exact tree to a `YamlNode` tree.
 - `scalar.classify` and `scalar.resolve_number` split plain-scalar resolution into its two steps; `scalar.resolve` is unchanged.
 
+- The docs on `YamlInt`, `YamlFloat` and `parse_raw` point to `yamleam/exact` for numbers that must stay as written.
+
+### Fixed
+
+- A float with an exponent and no decimal point (`1e-5`, `3e-7`) is rounded correctly. It used to be computed by repeated multiplication, which could be off in the last digit (`1e-5` read as `1.0000000000000004e-5`).
+- A float whose mantissa overflows despite an in-range exponent (`1000000000e300`) resolves to a string, as other out-of-range floats do. It used to crash the Erlang VM with `badarith`.
+- A malformed exponent (`1e+-5`) resolves to a string; it used to read as a float.
+- An implicit pair in a flow sequence keeps its key as written, as block and flow mappings do: `[1.10: x]` has the key `"1.10"`, `[~: x]` the key `"~"`. A number key used to pass through a float (`1.10` became `"1.1"`, `1e3` became `"1.0e3"`), and null and boolean keys were rewritten (`~` became `"null"`, `True` became `"true"`).
+
 ### Changed
 
-- `parse_raw` and `parse_documents_raw` build the exact tree and convert it, so both trees always agree. Their results are unchanged.
+- `parse_raw` and `parse_documents_raw` build the exact tree and convert it, so both trees always agree. Their results are unchanged apart from the fixes above.
 
 ## [1.4.0] — wrapped values
 
